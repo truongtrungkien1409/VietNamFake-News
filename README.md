@@ -6,7 +6,7 @@ Hệ thống nhận diện tin giả tiếng Việt dựa trên mô hình học 
 
 ## 🏗️ 1. Kiến Trúc Hệ Thống (Pipeline)
 
-1. **Tiền xử lý văn bản (5 bước chuẩn theo Mục 2.2.2.2 & Bảng 2.1):** Chuẩn hóa Unicode NFC/HTML/lowercase, chuẩn hóa URL thành `HTTPURL` và mentions thành `@USER` / xử lý hashtag, xử lý teencode & emoji thành từ diễn đạt, tách từ ghép tiếng Việt (RDRSegmenter/pyvi), và loại bỏ bản ghi rỗng, trùng lặp, câu dưới 3 từ.
+1. **Tiền xử lý văn bản (5 bước chuẩn theo Mục 2.2.2.2 & Bảng 2.1):** Chuẩn hóa Unicode NFC/HTML/lowercase, chuẩn hóa URL thành `HTTPURL` và mentions thành `@USER` / xử lý hashtag, xử lý teencode & emoji thành từ diễn đạt, tách từ ghép tiếng Việt bằng **pyvi (ViTokenizer)** *(Lưu ý: Báo cáo mô tả RDRSegmenter/VnCoreNLP, nhưng thực nghiệm triển khai sử dụng pyvi)*, và loại bỏ bản ghi rỗng, trùng lặp, câu dưới 3 từ.
 2. **Trích xuất đặc trưng (Feature Extraction):** Sử dụng mô hình tiền huấn luyện **PhoBERT-base-v2** (đóng băng trọng số, `requires_grad=False`) với `max_length=256` để trích xuất véc-tơ trạng thái ẩn 768 chiều từ token đặc biệt `[CLS]`.
 3. **Chuẩn hóa & Phân loại (StandardScaler + SVM):** Chuẩn hóa véc-tơ bằng `StandardScaler` (fit trên Train) và đưa vào bộ phân loại **Support Vector Machine (SVM)** với `kernel='linear'`, `C=1.0`, `probability=True`.
 4. **Triển khai ứng dụng:** Flask REST API (`app/app.py`) kết hợp Tiện ích mở rộng trình duyệt Chrome Extension (`app/extension/`).

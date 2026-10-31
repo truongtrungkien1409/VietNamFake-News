@@ -8,11 +8,6 @@ def test_table21_sample():
     preprocessor = TextPreprocessor(use_word_segmentation=False)
     cleaned = preprocessor.clean_text(sample_text)
     
-    # Kỳ vọng sau bước 1-3:
-    # - viết thường, NFC
-    # - ko -> không, đc -> được, URL_PLACEHOLDER -> HTTPURL, #tin_nong -> tin_nong
-    # - 😡 -> tức giận
-    # - dấu câu lặp được thu gọn/xóa
     assert "không" in cleaned
     assert "được" in cleaned
     assert "HTTPURL" in cleaned
@@ -26,6 +21,20 @@ def test_number_unchanged():
     cleaned = preprocessor.clean_text(text)
     assert "2000" in cleaned
     assert "10000" in cleaned
+
+def test_symbols_and_formatting_retained():
+    # Test ký hiệu %, $, -, (), số và chữ được giữ nguyên
+    text = "tăng 100%, giá $5, Covid-19 (nguy hiểm)"
+    preprocessor = TextPreprocessor(use_word_segmentation=False)
+    cleaned = preprocessor.clean_text(text)
+    assert "%" in cleaned
+    assert "$" in cleaned
+    assert "-" in cleaned
+    assert "(" in cleaned
+    assert ")" in cleaned
+    assert "100" in cleaned
+    assert "5" in cleaned
+    assert "covid-19" in cleaned
 
 def test_punctuation_duplicate_normalization():
     # (c) Hai câu chỉ khác dấu câu bị coi là trùng qua _get_normalization_key
@@ -54,8 +63,6 @@ def test_conflicting_labels_dropped():
     df = pd.DataFrame(data)
     result_df = preprocess_dataframe(df, text_col="text", label_col="label")
     
-    # Dòng 1 & 2 bị loại vì xung đột nhãn. Dòng 3 trùng dòng 1 cũng bị loại hoặc đã bị lọc.
-    # Chỉ còn lại dòng 4 (hoặc các mẫu hợp lệ không xung đột).
     texts = result_df['original_text'].tolist()
     assert "Bài viết kiểm tra tin tức số một trên mạng xã hội." not in texts
     assert "Một nội dung hoàn toàn khác biệt để kiểm tra hệ thống phân loại." in texts

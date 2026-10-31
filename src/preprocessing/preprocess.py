@@ -16,9 +16,13 @@ class TextPreprocessor:
     """
     Quy trình tiền xử lý văn bản tiếng Việt 5 bước chuẩn theo DACN.pdf (Mục 2.2.2.2 & Bảng 2.1):
     1. Loại bỏ ký tự rác, thẻ HTML và chuẩn hóa Unicode (NFC), chuyển lowercase.
-    2. Chuẩn hóa URL -> HTTPURL, mention -> @USER, xử lý hashtag (#tin_nong -> tin_nong), xóa dấu câu lặp.
-    3. Chuyển đổi teencode và emoji (xử lý cả variation selectors và các emoji khác) sang từ chuẩn, rút gọn ký tự lặp trên chữ cái.
-    4. Phân tách từ ghép tiếng Việt bằng pyvi (ViTokenizer).
+    2. Chuẩn hóa URL -> HTTPURL, mention -> @USER, xử lý hashtag (#tin_nong -> tin_nong).
+       Lưu ý về dấu câu lặp: Bảng 2.1 xóa hẳn dấu câu lặp (!!, ??), bản cài đặt này thu gọn lặp lại còn một dấu.
+    3. Chuyển đổi teencode và emoji (sử dụng dải Unicode emoji để xóa sạch biểu tượng đồ họa 
+       nhưng giữ nguyên chữ, số, khoảng trắng, dấu câu và các ký tự %, $, -, (), đ, ₫, v.v.), 
+       rút gọn ký tự lặp trên chữ cái (không ảnh hưởng chữ số).
+    4. Phân tách từ ghép tiếng Việt bằng pyvi (ViTokenizer). 
+       (Lưu ý: Báo cáo mô tả RDRSegmenter, nhưng thực nghiệm triển khai dùng pyvi).
     5. Loại bỏ bản ghi rỗng, trùng lặp và câu dưới 3 từ.
     """
     def __init__(self, use_word_segmentation: bool = True):
@@ -36,21 +40,22 @@ class TextPreprocessor:
         text = re.sub(r"<[^>]+>", "", text)
         text = text.lower()
 
-        # Bước 2: Chuẩn hóa URL, Mentions, Hashtag và xóa dấu câu lặp (!!, ??...)
+        # Bước 2: Chuẩn hóa URL, Mentions, Hashtag và thu gọn dấu câu lặp (!! -> !)
         text = re.sub(r"https?://\S+|www\.\S+|url_placeholder", "HTTPURL", text, flags=re.IGNORECASE)
         text = re.sub(r"@\[A-Za-z0-9_]+|@\w+", "@USER", text)
-        # Xử lý hashtag: giữ lại nội dung bên trong hashtag (#tin_nong -> tin_nong)
         text = re.sub(r"#([a-zA-Z0-9_À-ỹ]+)", r"\1", text)
-        # Xóa chuỗi dấu câu lặp (!!, ??, ...) hoặc gộp theo Bảng 2.1
         text = re.sub(r"([!?.,;:])\1+", r"\1", text)
 
-        # Bước 3: Xử lý Emoji (bao gồm variation selectors U+FE0F và mọi emoji BMP/non-BMP) và Teencode
+        # Bước 3: Ánh xạ teencode và emoji (xóa theo dải emoji Unicode, giữ lại chữ, số, %, $, -, (), dấu câu, v.v.)
         for emoji_char, meaning in EMOJI_DICT.items():
             text = text.replace(emoji_char, f" {meaning} ")
-        # Xóa variation selectors và các emoji còn lại
-        text = re.sub(r"[\U00010000-\U0010ffff\uFE0F]", "", text)
-        # Xóa các ký tự emoji Unicode bổ sung
-        text = re.sub(r"[^\w\s,.;:!?/@-_]", "", text)
+        
+        # Xóa các dải ký tự emoji / biểu tượng đồ họa Unicode
+        emoji_pattern = re.compile(
+            r"[\U00010000-\U0010ffff\U00002600-\U000027BF\U00002B00-\U00002BFF\U0000FE0F\U0000200D]",
+            flags=re.UNICODE
+        )
+        text = emoji_pattern.sub("", text)
 
         # Rút gọn ký tự lặp CHỈ trên chữ cái, không đụng chữ số (vuiiii -> vui)
         tokens = text.split()
@@ -80,9 +85,7 @@ class TextPreprocessor:
 
 def _get_normalization_key(text: str) -> str:
     """Chuẩn hóa thêm để loại bỏ dấu câu và khoảng trắng thừa khi kiểm tra trùng lặp."""
-    # Bỏ toàn bộ dấu câu
     no_punct = text.translate(str.maketrans('', '', string.punctuation))
-    # Gộp khoảng trắng
     return re.sub(r"\s+", " ", no_punct).strip()
 
 def preprocess_dataframe(df: pd.DataFrame, text_col: str = "text", label_col: str = "label") -> pd.DataFrame:
@@ -98,6 +101,11 @@ def preprocess_dataframe(df: pd.DataFrame, text_col: str = "text", label_col: st
 
     df = df.dropna(subset=[text_col, label_col]).copy()
     df['cleaned_text'] = df[text_col].astype(str).apply(preprocessor.clean_text)
+
+    if preprocessor.segmentation_error_count > 0:
+        print(f"⚠️ [Cảnh báo] Số câu gặp lỗi khi tách từ bằng pyvi: {preprocessor.segmentation_error_count}")
+    else:
+        print(f"✅ Hoàn tất tách từ không có lỗi (Số lỗi: {preprocessor.segmentation_error_count})")
 
     # Lọc bỏ bản ghi rỗng
     df = df[df['cleaned_text'].str.strip().str.len() > 0].copy()
