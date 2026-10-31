@@ -1,0 +1,43 @@
+# Local environment secrets
+.env
+.env.*
+!.env.example
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+fake_news_system.log
+api.log
+
+# Environment
+.venv/
+venv/
+env/
+
+# Dataset
+dataset-1/
+datasetvn/
+ML/dataset-1/
+ML/datasetvn/
+
+# Large artifacts under ML core
+ML core/dataset-1/
+ML core/datasetvn/
+ML core/ML/data/
+ML core/ML/models/phobert_fake_news/model.safetensors
+
+# Large ML artifacts
+ML/data/
+ML/models/
+*.safetensors
+*.pt
+*.bin
+
+# Notebook checkpoints
+.ipynb_checkpoints/
