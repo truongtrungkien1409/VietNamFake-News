@@ -1,26 +1,45 @@
 import os
 import sys
+import subprocess
+from datetime import datetime
 
 def main():
-    print("🚀 Bắt đầu chạy toàn bộ quy trình thực nghiệm theo DACN.pdf...")
+    os.makedirs("results/logs", exist_ok=True)
+    log_file_path = "results/logs/run_all.log"
     
-    # 1. Phân chia dữ liệu
-    print("\n--- BƯỚC 1: Phân chia tập dữ liệu (80/10/10) ---")
-    os.system("python src/preprocessing/split_data.py")
+    print(f"🚀 Bắt đầu chạy quy trình thực nghiệm. Log lưu tại {log_file_path}")
     
-    # 2. Trích xuất đặc trưng
-    print("\n--- BƯỚC 2: Trích xuất đặc trưng [CLS] 768 chiều từ PhoBERT ---")
-    os.system("python src/features/extract_phobert.py")
-    
-    # 3. Huấn luyện SVM
-    print("\n--- BƯỚC 3: Huấn luyện mô hình SVM ---")
-    os.system("python src/models/train_svm.py")
-    
-    # 4. Đánh giá
-    print("\n--- BƯỚC 4: Đánh giá mô hình trên tập Test ---")
-    os.system("python src/evaluation/evaluate.py")
-    
-    print("\n✅ Hoàn thành toàn bộ quy trình thực nghiệm!")
+    steps = [
+        ("Phân chia dữ liệu", ["src.preprocessing.split_data"]),
+        ("Trích xuất đặc trưng", ["src.features.extract_phobert"]),
+        ("Huấn luyện SVM", ["src.models.train_svm"]),
+        ("Đánh giá mô hình", ["src.evaluation.evaluate"])
+    ]
+
+    with open(log_file_path, "w", encoding="utf-8") as log_f:
+        for desc, cmd in steps:
+            print(f"\n--- {desc} ---")
+            log_f.write(f"\n[{datetime.now()}] --- {desc} ---\n")
+            log_f.flush()
+            
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m"] + cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8"
+                )
+                print(result.stdout)
+                log_f.write(result.stdout)
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Lỗi tại bước: {desc}")
+                print(e.stdout)
+                log_f.write(e.stdout)
+                sys.exit(1)
+
+    print("\n✅ Hoàn thành toàn bộ quy trình thực nghiệm thành công!")
 
 if __name__ == "__main__":
     main()
