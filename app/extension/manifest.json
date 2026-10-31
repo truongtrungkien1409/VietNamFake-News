@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Vietnamese Fake News Detector (PhoBERT-SVM)",
+  "version": "1.0.0",
+  "description": "Tiện ích mở rộng trình duyệt kiểm tra tin giả tiếng Việt thời gian thực sử dụng PhoBERT và SVM.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
