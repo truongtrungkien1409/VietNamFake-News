@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModel
-from src.preprocessing.preprocess import TextPreprocessor
 
 MODEL_NAME = "vinai/phobert-base-v2"
 MAX_LENGTH = 256
@@ -18,19 +17,29 @@ def extract_embeddings_for_split(csv_path: str, output_prefix: str):
         return
 
     df = pd.read_csv(csv_path)
-    preprocessor = TextPreprocessor(use_word_segmentation=True)
-    
-    print(f"🧹 Đang tiền xử lý {len(df)} mẫu từ {csv_path}...")
-    texts = [preprocessor.clean_text(t) for t in df['text'].astype(str).tolist()]
+    if 'text' not in df.columns or 'label' not in df.columns:
+        raise ValueError("File CSV phải chứa hai cột 'text' và 'label'.")
+
+    texts = df['text'].astype(str).tolist()
     labels = df['label'].astype(int).values
 
-    print(f"🤖 Đang tải mô hình {MODEL_NAME}...")
+    print(f"🤖 Đang tải mô hình {MODEL_NAME} (đóng băng trọng số, requires_grad=False)...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModel.from_pretrained(MODEL_NAME).to(device)
+    
+    # Kiểm tra thử nếu có model cache cục bộ hoặc tải từ hub
+    try:
+        model = AutoModel.from_pretrained(MODEL_NAME).to(device)
+    except Exception as e:
+        print(f"⚠️ Không thể tải từ hub (có thể do giới hạn ổ cứng). Lỗi: {e}")
+        raise e
+
     model.eval()
+    # Đóng băng hoàn toàn trọng số PhoBERT
+    for param in model.parameters():
+        param.requires_grad = False
 
     all_embeddings = []
-    print(f"🔄 Đang trích xuất đặc trưng [CLS] (768 chiều)...")
+    print(f"🔄 Đang trích xuất đặc trưng [CLS] (768 chiều) cho {len(texts)} mẫu từ {csv_path}...")
     start_time = time.time()
 
     for i in range(0, len(texts), BATCH_SIZE):

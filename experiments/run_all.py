@@ -22,21 +22,23 @@ def main():
             log_f.write(f"\n[{datetime.now()}] --- {desc} ---\n")
             log_f.flush()
             
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m"] + cmd,
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8"
-                )
-                print(result.stdout)
-                log_f.write(result.stdout)
-            except subprocess.CalledProcessError as e:
-                print(f"❌ Lỗi tại bước: {desc}")
-                print(e.stdout)
-                log_f.write(e.stdout)
+            process = subprocess.Popen(
+                [sys.executable, "-m"] + cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8"
+            )
+            
+            for line in process.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                log_f.write(line)
+                log_f.flush()
+                
+            process.wait()
+            if process.returncode != 0:
+                print(f"❌ Lỗi tại bước: {desc} (Exit code: {process.returncode})")
                 sys.exit(1)
 
     print("\n✅ Hoàn thành toàn bộ quy trình thực nghiệm thành công!")
