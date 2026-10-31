@@ -1,42 +1,31 @@
+import os
 import re
+import string
 import unicodedata
 import pandas as pd
 from typing import List, Optional
 from src.preprocessing.teencode import TEENCODE_DICT, EMOJI_DICT
 
-# Thử khởi tạo VnCoreNLP (RDRSegmenter) theo yêu cầu báo cáo
-_SEGMENTER = None
-_SEGMENTER_NAME = "pyvi"
-_WARNING_PRINTED = False
-
 try:
-    import py_vncorenlp
-    # Kiểm tra xem đã có model vncorenlp chưa hoặc tự tải
-    _vncore_dir = "./vncorenlp"
-    if not os.path.exists(_vncore_dir):
-        os.makedirs(_vncore_dir, exist_ok=True)
-    # Thử khởi tạo RDRSegmenter từ py_vncorenlp
-    # Lưu ý: Yêu cầu Java. Nếu không có Java hoặc lỗi, sẽ fallback pyvi.
-    # _SEGMENTER = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir=_vncore_dir)
-    # _SEGMENTER_NAME = "RDRSegmenter (VnCoreNLP)"
-except Exception:
-    pass
+    from pyvi import ViTokenizer
+    HAS_PYVI = True
+except ImportError:
+    HAS_PYVI = False
 
 class TextPreprocessor:
     """
     Quy trình tiền xử lý văn bản tiếng Việt 5 bước chuẩn theo DACN.pdf (Mục 2.2.2.2 & Bảng 2.1):
     1. Loại bỏ ký tự rác, thẻ HTML và chuẩn hóa Unicode (NFC), chuyển lowercase.
-    2. Chuẩn hóa URL -> HTTPURL, mention -> @USER, xử lý hashtag (#tin_nong -> tin_nong), gộp dấu câu lặp.
-    3. Chuyển đổi teencode và emoji sang từ chuẩn/ý nghĩa, rút gọn ký tự lặp (vuiiii -> vui).
-    4. Phân tách từ ghép tiếng Việt (Ưu tiên RDRSegmenter / VnCoreNLP, fallback pyvi ViTokenizer).
+    2. Chuẩn hóa URL -> HTTPURL, mention -> @USER, xử lý hashtag (#tin_nong -> tin_nong), xóa dấu câu lặp.
+    3. Chuyển đổi teencode và emoji (xử lý cả variation selectors và các emoji khác) sang từ chuẩn, rút gọn ký tự lặp trên chữ cái.
+    4. Phân tách từ ghép tiếng Việt bằng pyvi (ViTokenizer).
     5. Loại bỏ bản ghi rỗng, trùng lặp và câu dưới 3 từ.
     """
     def __init__(self, use_word_segmentation: bool = True):
         self.use_word_segmentation = use_word_segmentation
-        global _WARNING_PRINTED
-        if _SEGMENTER is None and not _WARNING_PRINTED:
-            print("⚠️ [Info] Không khởi tạo được VnCoreNLP/RDRSegmenter (hoặc thiếu Java). Sử dụng pyvi (ViTokenizer) làm fallback cho bước tách từ.")
-            _WARNING_PRINTED = True
+        self.segmentation_error_count = 0
+        if use_word_segmentation and not HAS_PYVI:
+            raise ImportError("Không tìm thấy thư viện pyvi. Yêu cầu cài đặt pyvi để thực hiện tách từ tiếng Việt.")
 
     def clean_text(self, text: str) -> str:
         if not isinstance(text, str) or not text.strip():
@@ -47,27 +36,27 @@ class TextPreprocessor:
         text = re.sub(r"<[^>]+>", "", text)
         text = text.lower()
 
-        # Bước 2: Chuẩn hóa URL, Mentions, Hashtag và dấu câu
+        # Bước 2: Chuẩn hóa URL, Mentions, Hashtag và xóa dấu câu lặp (!!, ??...)
         text = re.sub(r"https?://\S+|www\.\S+|url_placeholder", "HTTPURL", text, flags=re.IGNORECASE)
         text = re.sub(r"@\[A-Za-z0-9_]+|@\w+", "@USER", text)
         # Xử lý hashtag: giữ lại nội dung bên trong hashtag (#tin_nong -> tin_nong)
         text = re.sub(r"#([a-zA-Z0-9_À-ỹ]+)", r"\1", text)
-        # Gộp dấu câu lặp (!! -> "")
+        # Xóa chuỗi dấu câu lặp (!!, ??, ...) hoặc gộp theo Bảng 2.1
         text = re.sub(r"([!?.,;:])\1+", r"\1", text)
 
-        # Bước 3: Ánh xạ teencode và emoji, rút gọn ký tự lặp
-        # Thay thế emoji
+        # Bước 3: Xử lý Emoji (bao gồm variation selectors U+FE0F và mọi emoji BMP/non-BMP) và Teencode
         for emoji_char, meaning in EMOJI_DICT.items():
             text = text.replace(emoji_char, f" {meaning} ")
-        # Xóa các emoji còn lại không có trong từ điển
-        text = re.sub(r"[\U00010000-\U0010ffff]", "", text)
+        # Xóa variation selectors và các emoji còn lại
+        text = re.sub(r"[\U00010000-\U0010ffff\uFE0F]", "", text)
+        # Xóa các ký tự emoji Unicode bổ sung
+        text = re.sub(r"[^\w\s,.;:!?/@-_]", "", text)
 
-        # Thay thế teencode theo từ (token)
+        # Rút gọn ký tự lặp CHỈ trên chữ cái, không đụng chữ số (vuiiii -> vui)
         tokens = text.split()
         normalized_tokens = []
         for token in tokens:
-            # Rút gọn ký tự lặp quá 2 lần (ví dụ: vuiiii -> vuii)
-            token = re.sub(r'(.)\1{2,}', r'\1\1', token)
+            token = re.sub(r"([^\W\d_])\1{2,}", r"\1", token)
             if token in TEENCODE_DICT:
                 normalized_tokens.append(TEENCODE_DICT[token])
             else:
@@ -77,27 +66,29 @@ class TextPreprocessor:
         # Chuẩn hóa khoảng trắng
         text = re.sub(r"\s+", " ", text).strip()
 
-        # Bước 4: Phân tách từ ghép tiếng Việt
+        # Bước 4: Phân tách từ ghép tiếng Việt bằng pyvi
         if self.use_word_segmentation:
             try:
-                if _SEGMENTER is not None:
-                    segmented_sents = _SEGMENTER.word_segment(text)
-                    text = " ".join(segmented_sents)
-                else:
-                    from pyvi import ViTokenizer
-                    text = ViTokenizer.tokenize(text)
-            except Exception as e:
-                # Fallback to simple split if pyvi fails (e.g. disk space error on C:)
-                pass
+                text = ViTokenizer.tokenize(text)
+            except Exception:
+                self.segmentation_error_count += 1
 
         return text
 
     def process_batch(self, texts: List[str]) -> List[str]:
         return [self.clean_text(t) for t in texts]
 
+def _get_normalization_key(text: str) -> str:
+    """Chuẩn hóa thêm để loại bỏ dấu câu và khoảng trắng thừa khi kiểm tra trùng lặp."""
+    # Bỏ toàn bộ dấu câu
+    no_punct = text.translate(str.maketrans('', '', string.punctuation))
+    # Gộp khoảng trắng
+    return re.sub(r"\s+", " ", no_punct).strip()
+
 def preprocess_dataframe(df: pd.DataFrame, text_col: str = "text", label_col: str = "label") -> pd.DataFrame:
     """
-    Bước 5 ở cấp độ DataFrame: Loại bỏ bản ghi rỗng, trùng lặp theo text sau xử lý, và câu dưới 3 từ.
+    Bước 5 ở cấp độ DataFrame: Loại bỏ bản ghi rỗng, trùng lặp, câu dưới 3 từ,
+    và loại bỏ hoàn toàn các văn bản xuất hiện với hơn một nhãn khác nhau (nhãn xung đột).
     """
     if text_col not in df.columns or label_col not in df.columns:
         raise ValueError(f"DataFrame phải chứa các cột '{text_col}' và '{label_col}'.")
@@ -115,10 +106,22 @@ def preprocess_dataframe(df: pd.DataFrame, text_col: str = "text", label_col: st
     df['word_count'] = df['cleaned_text'].apply(lambda x: len(x.split()))
     df = df[df['word_count'] >= 3].copy()
 
-    # Lọc bỏ trùng lặp theo cleaned_text (giữ bản đầu tiên)
+    # Tạo khóa chuẩn hóa (bỏ toàn bộ dấu câu và khoảng trắng thừa)
+    df['norm_key'] = df['cleaned_text'].apply(_get_normalization_key)
+
+    # Loại bỏ các văn bản xuất hiện với hơn một nhãn khác nhau (nhãn xung đột)
+    label_counts_per_key = df.groupby('norm_key')[label_col].nunique()
+    conflicting_keys = label_counts_per_key[label_counts_per_key > 1].index
+    n_conflicting = df[df['norm_key'].isin(conflicting_keys)].shape[0]
+    
+    if n_conflicting > 0:
+        print(f"   - Đã loại bỏ {n_conflicting} mẫu do có nhãn xung đột (cùng nội dung nhưng khác nhãn).")
+    df = df[~df['norm_key'].isin(conflicting_keys)].copy()
+
+    # Bỏ trùng lặp theo norm_key (giữ bản đầu tiên)
     initial_len = len(df)
-    df = df.drop_duplicates(subset=['cleaned_text'], keep='first').copy()
-    print(f"   - Đã loại bỏ {initial_len - len(df)} mẫu trùng lặp hoặc dưới 3 từ.")
+    df = df.drop_duplicates(subset=['norm_key'], keep='first').copy()
+    print(f"   - Đã loại bỏ {initial_len - len(df)} mẫu trùng lặp.")
     print(f"✅ Số lượng mẫu sau khi tiền xử lý hoàn tất: {len(df)}")
 
     return df[[text_col, 'cleaned_text', label_col]].rename(columns={text_col: 'original_text', 'cleaned_text': 'text'})

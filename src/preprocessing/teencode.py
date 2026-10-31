@@ -17,7 +17,6 @@ TEENCODE_DICT = {
     "mng": "mọi người",
     "mn": "mọi người",
     "mik": "mình",
-    "mình": "mình",
     "mk": "mình",
     "hok": "không",
     "hông": "không",
@@ -27,22 +26,20 @@ TEENCODE_DICT = {
     "rep": "trả lời",
     "add": "thêm",
     "online": "trực tuyến",
-    "offline": " ngoại tuyến",
+    "offline": "ngoại tuyến",
     "rip": "chia buồn",
     "fa": "độc thân",
     "gato": "ghen tị",
     "cmt": "bình luận",
     "like": "thích",
     "share": "chia sẻ",
-    "add": "thêm",
     "inbox": "nhắn tin",
-    "bão": "bão",
     "bth": "bình thường",
-    "Dr": "bác sĩ",
+    "dr": "bác sĩ",
     "bs": "bác sĩ",
-    "TpHCM": "thành phố hồ chí minh",
-    "HN": "hà nội",
-    "VN": "việt nam"
+    "tphcm": "thành phố hồ chí minh",
+    "hn": "hà nội",
+    "vn": "việt nam"
 }
 
 EMOJI_DICT = {

@@ -1,46 +1,61 @@
-from src.preprocessing.preprocess import TextPreprocessor
+import pytest
+import pandas as pd
+from src.preprocessing.preprocess import TextPreprocessor, _get_normalization_key, preprocess_dataframe
 
-def test_preprocessing_table21():
+def test_table21_sample():
+    # (a) Câu mẫu Bảng 2.1 (use_word_segmentation=False)
     sample_text = "SỐC!! ko thể tin đc link URL_PLACEHOLDER #tin_nong dịch bệnh bùng phát 😡"
-    print(f"Original Text: {sample_text}\n")
-
-    preprocessor = TextPreprocessor(use_word_segmentation=True)
+    preprocessor = TextPreprocessor(use_word_segmentation=False)
+    cleaned = preprocessor.clean_text(sample_text)
     
-    # Let's inspect step by step
-    # Step 1: Unicode NFC + HTML tags removal + lowercase
-    import unicodedata, re
-    t1 = unicodedata.normalize("NFC", sample_text)
-    t1 = re.sub(r"<[^>]+>", "", t1).lower()
-    print(f"Step 1 (NFC + lowercase + HTML removal): {t1}")
+    # Kỳ vọng sau bước 1-3:
+    # - viết thường, NFC
+    # - ko -> không, đc -> được, URL_PLACEHOLDER -> HTTPURL, #tin_nong -> tin_nong
+    # - 😡 -> tức giận
+    # - dấu câu lặp được thu gọn/xóa
+    assert "không" in cleaned
+    assert "được" in cleaned
+    assert "HTTPURL" in cleaned
+    assert "tin_nong" in cleaned
+    assert "tức giận" in cleaned
 
-    # Step 2: URL -> HTTPURL, mention -> @USER, hashtag -> word, punctuation collapse
-    t2 = re.sub(r"https?://\S+|www\.\S+|url_placeholder", "HTTPURL", t1, flags=re.IGNORECASE)
-    t2 = re.sub(r"@\[A-Za-z0-9_]+|@\w+", "@USER", t2)
-    t2 = re.sub(r"#([a-zA-Z0-9_À-ỹ]+)", r"\1", t2)
-    t2 = re.sub(r"([!?.,;:])\1+", r"\1", t2)
-    print(f"Step 2 (URL, mention, hashtag, punct): {t2}")
+def test_number_unchanged():
+    # (b) Số không bị đổi bởi quy tắc rút gọn ký tự lặp
+    text = "2000 người, 10000 đồng"
+    preprocessor = TextPreprocessor(use_word_segmentation=False)
+    cleaned = preprocessor.clean_text(text)
+    assert "2000" in cleaned
+    assert "10000" in cleaned
 
-    # Step 3: Teencode & Emoji mapping, repetition collapse
-    from src.preprocessing.teencode import TEENCODE_DICT, EMOJI_DICT
-    t3 = t2
-    for emoji_char, meaning in EMOJI_DICT.items():
-        t3 = t3.replace(emoji_char, f" {meaning} ")
-    t3 = re.sub(r"[\U00010000-\U0010ffff]", "", t3)
+def test_punctuation_duplicate_normalization():
+    # (c) Hai câu chỉ khác dấu câu bị coi là trùng qua _get_normalization_key
+    sent1 = "Tin tức nóng hổi hôm nay!"
+    sent2 = "Tin tức nóng hổi hôm nay?"
     
-    tokens = t3.split()
-    norm_tokens = []
-    for token in tokens:
-        if token in TEENCODE_DICT:
-            norm_tokens.append(TEENCODE_DICT[token])
-        else:
-            norm_tokens.append(token)
-    t3 = " ".join(norm_tokens)
-    t3 = re.sub(r"\s+", " ", t3).strip()
-    print(f"Step 3 (Teencode + Emoji mapping): {t3}")
+    preprocessor = TextPreprocessor(use_word_segmentation=False)
+    c1 = preprocessor.clean_text(sent1)
+    c2 = preprocessor.clean_text(sent2)
+    
+    key1 = _get_normalization_key(c1)
+    key2 = _get_normalization_key(c2)
+    assert key1 == key2
 
-    # Step 4 & Full pipeline
-    final_result = preprocessor.clean_text(sample_text)
-    print(f"Step 4 & Final Pipeline (Word Segmentation): {final_result}")
-
-if __name__ == "__main__":
-    test_preprocessing_table21()
+def test_conflicting_labels_dropped():
+    # (d) Văn bản trùng khác nhãn bị loại hoàn toàn
+    data = {
+        "text": [
+            "Bài viết kiểm tra tin tức số một trên mạng xã hội.",
+            "Bài viết kiểm tra tin tức số một trên mạng xã hội!",  # trùng normalized key với dòng 1
+            "Bài viết kiểm tra tin tức số một trên mạng xã hội.",  # trùng normalized key với dòng 1
+            "Một nội dung hoàn toàn khác biệt để kiểm tra hệ thống phân loại."
+        ],
+        "label": [0, 1, 0, 1]  # dòng 1 và dòng 2 nội dung giống nhau nhưng nhãn khác nhau (0 và 1) -> xung đột!
+    }
+    df = pd.DataFrame(data)
+    result_df = preprocess_dataframe(df, text_col="text", label_col="label")
+    
+    # Dòng 1 & 2 bị loại vì xung đột nhãn. Dòng 3 trùng dòng 1 cũng bị loại hoặc đã bị lọc.
+    # Chỉ còn lại dòng 4 (hoặc các mẫu hợp lệ không xung đột).
+    texts = result_df['original_text'].tolist()
+    assert "Bài viết kiểm tra tin tức số một trên mạng xã hội." not in texts
+    assert "Một nội dung hoàn toàn khác biệt để kiểm tra hệ thống phân loại." in texts
