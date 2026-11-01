@@ -7,20 +7,31 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.svm import SVC
 from src.evaluation.metrics import compute_metrics, save_confusion_matrix
+from src.config import get_paths
 
 def train_and_evaluate_svm_tfidf(
-    train_csv: str = "data/splits/train.csv",
-    val_csv: str = "data/splits/val.csv",
-    test_csv: str = "data/splits/test.csv",
-    output_csv: str = "results/tables/baseline_svm_tfidf.csv",
-    pred_csv: str = "results/tables/predictions_svm_tfidf.csv",
-    cm_path: str = "results/figures/svm_tfidf_confusion_matrix.png",
-    max_samples: int = None
+    train_csv: str = None,
+    val_csv: str = None,
+    test_csv: str = None,
+    output_csv: str = None,
+    metrics_output: str = None,
+    pred_csv: str = None,
+    cm_path: str = None,
+    max_samples: int = None,
+    **kwargs
 ):
+    paths = get_paths()
+    if train_csv is None: train_csv = os.path.join(paths.splits, "train.csv")
+    if val_csv is None: val_csv = os.path.join(paths.splits, "val.csv")
+    if test_csv is None: test_csv = os.path.join(paths.splits, "test.csv")
+    if metrics_output is None: metrics_output = output_csv or os.path.join(paths.tables, "baseline_svm_tfidf.csv")
+    if pred_csv is None: pred_csv = os.path.join(paths.tables, "predictions_svm_tfidf.csv")
+    if cm_path is None: cm_path = os.path.join(paths.figures, "svm_tfidf_confusion_matrix.png")
+
     print("📊 [SVM + TF-IDF Baseline] Đang tải dữ liệu...")
     if not os.path.exists(train_csv) or not os.path.exists(val_csv) or not os.path.exists(test_csv):
         print("❌ Lỗi: Thiếu file dữ liệu chia tách. Hãy chạy split_data trước.")
-        return
+        return {}
 
     train_df = pd.read_csv(train_csv).dropna(subset=['text', 'label'])
     val_df = pd.read_csv(val_csv).dropna(subset=['text', 'label'])
@@ -73,15 +84,15 @@ def train_and_evaluate_svm_tfidf(
     start_inf = time.time()
     y_probs = best_svm.predict_proba(X_test)[:, 1]
     y_pred = best_svm.predict(X_test)
-    inf_time = (time.time() - start_inf) / X_test.shape[0]
+    inf_time = (time.time() - start_inf) / X_test.shape[0] if X_test.shape[0] > 0 else 0.0
 
     test_metrics = compute_metrics(y_test, y_pred, y_probs)
     test_metrics["training_time_sec"] = round(train_time, 2)
     test_metrics["inference_sec_per_sample"] = round(inf_time, 6)
     test_metrics["n_parameters"] = int(X_train.shape[1])
 
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    pd.DataFrame([test_metrics]).to_csv(output_csv, index=False)
+    os.makedirs(os.path.dirname(metrics_output), exist_ok=True)
+    pd.DataFrame([test_metrics]).to_csv(metrics_output, index=False)
 
     df_preds = pd.DataFrame({
         "original_text": test_df['original_text'].tolist() if 'original_text' in test_df.columns else test_df['text'].tolist(),
@@ -90,10 +101,14 @@ def train_and_evaluate_svm_tfidf(
         "predicted_label": y_pred,
         "fake_probability": y_probs
     })
+    os.makedirs(os.path.dirname(pred_csv), exist_ok=True)
     df_preds.to_csv(pred_csv, index=False)
     save_confusion_matrix(y_test, y_pred, cm_path)
 
-    print(f"✅ SVM + TF-IDF Baseline hoàn tất! Đã lưu kết quả tại {output_csv}")
+    print(f"✅ SVM + TF-IDF Baseline hoàn tất! Đã lưu kết quả tại {metrics_output}")
+    return test_metrics
+
+run_svm_tfidf_baseline = train_and_evaluate_svm_tfidf
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

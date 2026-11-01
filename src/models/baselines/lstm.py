@@ -1,13 +1,16 @@
 import os
 import time
 import random
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
+from sklearn.metrics import precision_recall_fscore_support
 from src.evaluation.metrics import compute_metrics, save_confusion_matrix
+from src.config import get_paths
 
 SEED = 42
 random.seed(SEED)
@@ -52,30 +55,64 @@ class TextLSTM(nn.Module):
         logits = self.fc(hidden)
         return self.sigmoid(logits).squeeze(1)
 
+def build_vocab(train_texts, min_freq=2, max_words=30000):
+    word_counts = {}
+    for text in train_texts:
+        for word in str(text).split():
+            word_counts[word] = word_counts.get(word, 0) + 1
+    
+    sorted_words = sorted([w for w, c in word_counts.items() if c >= min_freq], key=lambda w: word_counts[w], reverse=True)
+    vocab = {"<pad>": 0, "<unk>": 1}
+    for word in sorted_words[:max_words - 2]:
+        vocab[word] = len(vocab)
+    return vocab
+
 def run_lstm_baseline(
-    train_csv: str = "data/splits/train.csv",
-    test_csv: str = "data/splits/test.csv",
-    epochs: int = 2,
+    train_csv: str = None,
+    val_csv: str = None,
+    test_csv: str = None,
+    epochs: int = 15,
     batch_size: int = 32,
-    metrics_output: str = "results/tables/lstm_metrics.csv"
+    max_samples: int = None,
+    metrics_output: str = None,
+    output_csv: str = None,
+    pred_csv: str = None,
+    cm_path: str = None,
+    model_path: str = None,
+    min_freq: int = 2,
+    max_words: int = 30000,
+    **kwargs
 ):
-    if not os.path.exists(train_csv) or not os.path.exists(test_csv):
-        print("⚠️ Thiếu file dữ liệu train/test cho LSTM baseline.")
-        return
+    paths = get_paths()
+    if train_csv is None: train_csv = os.path.join(paths.splits, "train.csv")
+    if val_csv is None: val_csv = os.path.join(paths.splits, "val.csv")
+    if test_csv is None: test_csv = os.path.join(paths.splits, "test.csv")
+    if metrics_output is None: metrics_output = output_csv or os.path.join(paths.tables, "lstm_metrics.csv")
+    if pred_csv is None: pred_csv = os.path.join(paths.tables, "lstm_preds.csv")
+    if cm_path is None: cm_path = os.path.join(paths.figures, "cm_lstm.png")
+    if model_path is None: model_path = os.path.join(paths.saved_models, "lstm_model.pt")
+
+    if not os.path.exists(train_csv) or not os.path.exists(val_csv) or not os.path.exists(test_csv):
+        print("⚠️ Thiếu file dữ liệu train/val/test cho LSTM baseline.")
+        return {}
 
     train_df = pd.read_csv(train_csv).dropna(subset=['text', 'label'])
+    val_df = pd.read_csv(val_csv).dropna(subset=['text', 'label'])
     test_df = pd.read_csv(test_csv).dropna(subset=['text', 'label'])
 
-    vocab = {"<pad>": 0, "<unk>": 1}
-    for txt in train_df['text'].astype(str):
-        for w in txt.split():
-            if w not in vocab:
-                vocab[w] = len(vocab)
+    if max_samples:
+        train_df = train_df.head(max_samples)
+        val_df = val_df.head(max_samples)
+        test_df = test_df.head(max_samples)
+
+    vocab = build_vocab(train_df['text'].values, min_freq=min_freq, max_words=max_words)
 
     train_dataset = SimpleTextDataset(train_df['text'].values, train_df['label'].values, vocab)
+    val_dataset = SimpleTextDataset(val_df['text'].values, val_df['label'].values, vocab)
     test_dataset = SimpleTextDataset(test_df['text'].values, test_df['label'].values, vocab)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,8 +121,13 @@ def run_lstm_baseline(
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     start_t = time.time()
-    model.train()
+    best_val_f1 = -1.0
+    patience = 3
+    patience_counter = 0
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+
     for epoch in range(epochs):
+        model.train()
         for x_b, y_b in train_loader:
             x_b, y_b = x_b.to(device), y_b.to(device)
             optimizer.zero_grad()
@@ -93,7 +135,34 @@ def run_lstm_baseline(
             loss = criterion(preds, y_b)
             loss.backward()
             optimizer.step()
+
+        model.eval()
+        val_preds, val_true = [], []
+        with torch.no_grad():
+            for x_v, y_v in val_loader:
+                x_v = x_v.to(device)
+                probs = model(x_v).cpu().numpy()
+                preds = (probs >= 0.5).astype(int)
+                val_preds.extend(preds)
+                val_true.extend(y_v.numpy())
+
+        _, _, f_cls, _ = precision_recall_fscore_support(val_true, val_preds, labels=[0, 1], zero_division=0)
+        val_f1_fake = f_cls[1] if len(f_cls) > 1 else 0.0
+
+        if val_f1_fake > best_val_f1:
+            best_val_f1 = val_f1_fake
+            patience_counter = 0
+            torch.save(model.state_dict(), model_path)
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"🛑 LSTM Early stopping tại epoch {epoch+1} (Val F1 Fake: {val_f1_fake*100:.2f}%)")
+                break
+
     train_time = time.time() - start_t
+
+    if os.path.exists(model_path):
+        model.load_state_dict(torch.load(model_path))
 
     model.eval()
     all_preds, all_probs, all_true = [], [], []
@@ -107,84 +176,33 @@ def run_lstm_baseline(
             all_preds.extend(preds)
             all_true.extend(y_b.numpy())
     pred_time = time.time() - start_pred
-    inference_time_per_sample = pred_time / len(test_df)
+    inference_time_per_sample = pred_time / len(test_df) if len(test_df) > 0 else 0.0
 
     metrics = compute_metrics(all_true, all_preds, all_probs)
     metrics["training_time_sec"] = round(train_time, 2)
-    metrics["inference_sec_per_sample"] = round(inference_time_per_sample, 4)
+    metrics["inference_sec_per_sample"] = round(inference_time_per_sample, 6)
 
     os.makedirs(os.path.dirname(metrics_output), exist_ok=True)
     pd.DataFrame([metrics]).to_csv(metrics_output, index=False)
-    return metrics
 
-def train_and_evaluate_lstm(
-    train_csv: str = "data/splits/train.csv",
-    val_csv: str = "data/splits/val.csv",
-    test_csv: str = "data/splits/test.csv",
-    output_csv: str = "results/tables/lstm_metrics.csv",
-    pred_csv: str = "results/tables/lstm_preds.csv",
-    cm_path: str = "results/figures/cm_lstm.png",
-    model_path: str = "results/saved_models/lstm_model.pt",
-    epochs: int = 1,
-    batch_size: int = 32,
-    max_samples: int = None
-):
-    train_df = pd.read_csv(train_csv).dropna(subset=['text', 'label'])
-    test_df = pd.read_csv(test_csv).dropna(subset=['text', 'label'])
-    if max_samples:
-        train_df = train_df.head(max_samples)
-        test_df = test_df.head(max_samples)
-
-    vocab = {"<pad>": 0, "<unk>": 1}
-    for txt in train_df['text'].astype(str):
-        for w in txt.split():
-            if w not in vocab:
-                vocab[w] = len(vocab)
-
-    train_dataset = SimpleTextDataset(train_df['text'].values, train_df['label'].values, vocab)
-    test_dataset = SimpleTextDataset(test_df['text'].values, test_df['label'].values, vocab)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = TextLSTM(vocab_size=len(vocab)).to(device)
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
-    model.train()
-    for epoch in range(epochs):
-        for x_b, y_b in train_loader:
-            x_b, y_b = x_b.to(device), y_b.to(device)
-            optimizer.zero_grad()
-            preds = model(x_b)
-            loss = criterion(preds, y_b)
-            loss.backward()
-            optimizer.step()
-
-    model.eval()
-    all_preds, all_probs, all_true = [], [], []
-    with torch.no_grad():
-        for x_b, y_b in test_loader:
-            x_b = x_b.to(device)
-            probs = model(x_b).cpu().numpy()
-            preds = (probs >= 0.5).astype(int)
-            all_probs.extend(probs)
-            all_preds.extend(preds)
-            all_true.extend(y_b.numpy())
-
-    metrics = compute_metrics(all_true, all_preds, all_probs)
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    pd.DataFrame([metrics]).to_csv(output_csv, index=False)
-
-    df_pred = pd.DataFrame({"true": all_true, "pred": all_preds, "prob": all_probs})
+    df_preds = pd.DataFrame({
+        "original_text": test_df['original_text'].tolist() if 'original_text' in test_df.columns else test_df['text'].tolist(),
+        "text": test_df['text'].tolist(),
+        "true_label": all_true,
+        "predicted_label": all_preds,
+        "fake_probability": all_probs
+    })
     os.makedirs(os.path.dirname(pred_csv), exist_ok=True)
-    df_pred.to_csv(pred_csv, index=False)
+    df_preds.to_csv(pred_csv, index=False)
 
     save_confusion_matrix(all_true, all_preds, cm_path)
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    torch.save(model.state_dict(), model_path)
     return metrics
 
+train_and_evaluate_lstm = run_lstm_baseline
+
 if __name__ == "__main__":
-    run_lstm_baseline()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--epochs", type=int, default=15)
+    parser.add_argument("--max-samples", type=int, default=None)
+    args = parser.parse_args()
+    run_lstm_baseline(epochs=args.epochs, max_samples=args.max_samples)

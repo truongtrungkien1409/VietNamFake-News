@@ -15,6 +15,7 @@ import pandas as pd
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModel
 from sklearn.metrics import precision_recall_fscore_support
+from src.config import get_paths
 from src.evaluation.metrics import (
     compute_metrics,
     save_confusion_matrix,
@@ -26,6 +27,17 @@ from src.evaluation.metrics import (
 def get_system_info():
     """Thu thập thông tin môi trường hệ thống cho results/environment.json"""
     import sklearn
+    cpu_name = platform.processor()
+    if platform.system() == "Windows":
+        try:
+            import subprocess
+            res = subprocess.run(["wmic", "cpu", "get", "name"], capture_output=True, text=True, timeout=3)
+            lines = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+            if len(lines) > 1:
+                cpu_name = lines[1]
+        except Exception:
+            pass
+
     info = {
         "timestamp": datetime.now().isoformat(),
         "os": platform.system() + " " + platform.release(),
@@ -35,25 +47,28 @@ def get_system_info():
         "sklearn_version": sklearn.__version__,
         "numpy_version": np.__version__,
         "pandas_version": pd.__version__,
-        "cpu_name": platform.processor(),
+        "cpu_name": cpu_name,
         "cpu_cores": os.cpu_count(),
-        "ram_gb": round(psutil.virtual_memory().total / (1024**3), 2) if HAS_PSUTIL else 0.0,
+        "ram_gb": round(psutil.virtual_memory().total / (1024**3), 2) if HAS_PSUTIL else None,
         "gpu_available": torch.cuda.is_available(),
         "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None"
     }
     return info
 
 def evaluate_main(
-    test_csv: str = "data/splits/test.csv",
-    test_feat_path: str = "data/splits/test_features_768.npy",
-    test_label_path: str = "data/splits/test_labels.npy",
+    test_csv: str = None,
+    test_feat_path: str = None,
+    test_label_path: str = None,
     model_path: str = None,
     scaler_path: str = None
 ):
-    res_base = os.environ.get("RESULTS_BASE", "results")
-    if model_path is None: model_path = os.path.join(res_base, "saved_models/svm_model.pkl")
-    if scaler_path is None: scaler_path = os.path.join(res_base, "saved_models/scaler.pkl")
-    # Kiểm tra file đầu vào
+    paths = get_paths()
+    if test_csv is None: test_csv = os.path.join(paths.splits, "test.csv")
+    if test_feat_path is None: test_feat_path = os.path.join(paths.splits, "test_features_768.npy")
+    if test_label_path is None: test_label_path = os.path.join(paths.splits, "test_labels.npy")
+    if model_path is None: model_path = os.path.join(paths.saved_models, "svm_model.pkl")
+    if scaler_path is None: scaler_path = os.path.join(paths.saved_models, "scaler.pkl")
+
     required = [test_feat_path, test_label_path, model_path, scaler_path]
     for f in required:
         if not os.path.exists(f):
@@ -71,29 +86,45 @@ def evaluate_main(
     print("⚖️ Đang chuẩn hóa tập test bằng StandardScaler...")
     X_test_scaled = scaler.transform(X_test)
 
-    # Đo thời gian suy luận (PhoBERT riêng & SVM riêng)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"⏱️ Đang đo thời gian suy luận trên thiết bị: {device}...")
     
-    # Đo thời gian SVM predict
     start_svm = time.time()
     y_probs = svm_model.predict_proba(X_test_scaled)[:, 1]
     y_pred = svm_model.predict(X_test_scaled)
     svm_time_total = time.time() - start_svm
     svm_time_per_sample = svm_time_total / len(X_test)
 
-    # Đo thời gian trích xuất PhoBERT trên một batch nhỏ hoặc mô phỏng (hoặc load model nếu cần)
-    phobert_time_per_sample = 0.005 # Ước tính trung bình dựa trên benchmark trước đó (hoặc đo thực tế)
-    total_time_per_sample = phobert_time_per_sample + svm_time_per_sample
+    # Đo thời gian trích xuất PhoBERT thật trên 100 mẫu test đầu tiên (sau 1 lần khởi động, lấy trung bình mỗi mẫu)
+    phobert_time_per_sample = float('nan')
+    try:
+        sample_texts = test_df['text'].head(100).astype(str).tolist() if test_df is not None and 'text' in test_df.columns else [f"Sample {i}" for i in range(min(100, len(X_test)))]
+        if sample_texts:
+            tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base-v2")
+            model = AutoModel.from_pretrained("vinai/phobert-base-v2").to(device)
+            model.eval()
+            # Warm-up run (1 lần khởi động)
+            with torch.no_grad():
+                encoded_warmup = tokenizer(sample_texts[:1], padding=True, truncation=True, max_length=256, return_tensors="pt").to(device)
+                _ = model(**encoded_warmup)
+            
+            start_phobert = time.time()
+            with torch.no_grad():
+                encoded = tokenizer(sample_texts, padding=True, truncation=True, max_length=256, return_tensors="pt").to(device)
+                _ = model(**encoded)
+            phobert_elapsed = time.time() - start_phobert
+            phobert_time_per_sample = phobert_elapsed / len(sample_texts)
+    except Exception as e:
+        print(f"⚠️ Không thể đo thời gian trích xuất PhoBERT thực tế: {e}")
 
-    # Kích thước file model & scaler
+    total_time_per_sample = (phobert_time_per_sample if not np.isnan(phobert_time_per_sample) else 0.0) + svm_time_per_sample
+
     model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
     scaler_size_mb = os.path.getsize(scaler_path) / (1024 * 1024)
 
-    # Tính toán các chỉ số
     metrics = compute_metrics(y_test, y_pred, y_probs)
+    metrics["inference_sec_per_sample"] = round(total_time_per_sample, 6)
 
-    # Khoảng tin cậy 95% cho F1 lớp Tin giả
     def f1_fake_func(yt, yp):
         p, r, f, _ = precision_recall_fscore_support(yt, yp, labels=[0, 1], zero_division=0)
         return f[1] if len(f) > 1 else 0.0
@@ -112,21 +143,21 @@ def evaluate_main(
     print(f"Confusion Matrix: TN={metrics['TN']}, FP={metrics['FP']}, FN={metrics['FN']}, TP={metrics['TP']}")
     print("==========================================================================")
 
-    # Xuất các file kết quả
-    res_base = os.environ.get("RESULTS_BASE", "results")
+    res_base = paths.results_base
     os.makedirs(os.path.join(res_base, "tables"), exist_ok=True)
     os.makedirs(os.path.join(res_base, "figures"), exist_ok=True)
 
-    # 1. evaluation_metrics.csv
     df_metrics = pd.DataFrame([metrics])
     df_metrics.to_csv(os.path.join(res_base, "tables/evaluation_metrics.csv"), index=False)
 
-    # 2. Biểu đồ Confusion Matrix, ROC, PR
+    env_info = get_system_info()
+    with open(os.path.join(res_base, "environment.json"), "w", encoding="utf-8") as f:
+        json.dump(env_info, f, ensure_ascii=False, indent=4)
+
     save_confusion_matrix(y_test, y_pred, os.path.join(res_base, "figures/confusion_matrix.png"))
     save_roc_curve(y_test, y_probs, os.path.join(res_base, "figures/roc_curve.png"))
     save_pr_curve(y_test, y_probs, os.path.join(res_base, "figures/pr_curve.png"))
 
-    # 3. predictions_test.csv
     pred_data = {
         "original_text": test_df['original_text'].tolist() if test_df is not None and 'original_text' in test_df.columns else [f"Sample {i}" for i in range(len(y_test))],
         "text": test_df['text'].tolist() if test_df is not None and 'text' in test_df.columns else ["" for _ in range(len(y_test))],
@@ -137,7 +168,6 @@ def evaluate_main(
     df_preds = pd.DataFrame(pred_data)
     df_preds.to_csv(os.path.join(res_base, "tables/predictions_test.csv"), index=False)
 
-    # 4. Error analysis (FP, FN) & error_samples.md
     df_preds['error_type'] = ''
     df_preds.loc[(df_preds['true_label'] == 0) & (df_preds['predicted_label'] == 1), 'error_type'] = 'FP'
     df_preds.loc[(df_preds['true_label'] == 1) & (df_preds['predicted_label'] == 0), 'error_type'] = 'FN'
@@ -145,52 +175,27 @@ def evaluate_main(
     df_errors = df_preds[df_preds['error_type'].isin(['FP', 'FN'])].copy()
     df_errors.to_csv(os.path.join(res_base, "tables/error_analysis.csv"), index=False)
 
-    # Top 10 FP và top 10 FN theo xác suất cao nhất
-    top_fp = df_errors[df_errors['error_type'] == 'FP'].sort_values(by='fake_probability', ascending=False).head(10)
-    top_fn = df_errors[df_errors['error_type'] == 'FN'].sort_values(by='fake_probability', ascending=True).head(10) # Xác suất giả thấp nhất nghĩa là tự tin nhầm thành thật nhất
+    # Thêm inference_time.csv
+    df_inf = pd.DataFrame([{
+        "phobert_time_per_sample_sec": phobert_time_per_sample,
+        "svm_time_per_sample_sec": svm_time_per_sample,
+        "total_inference_sec_per_sample": total_time_per_sample
+    }])
+    df_inf.to_csv(os.path.join(res_base, "tables/inference_time.csv"), index=False)
 
-    with open(os.path.join(res_base, "error_samples.md"), "w", encoding="utf-8") as md:
-        md.write("# Phân Tích Định Tính Mẫu Lỗi (Error Analysis - Top FP & FN)\n\n")
-        md.write("## Top 10 Mẫu False Positive (Tin thật bị dự đoán nhầm thành Tin giả)\n")
-        for idx, row in top_fp.iterrows():
-            txt = str(row['text'])[:300]
-            md.write(f"- **Xác suất giả:** `{row['fake_probability']:.4f}` | **Nội dung:** {txt}...\n")
-        
-        md.write("\n## Top 10 Mẫu False Negative (Tin giả bị dự đoán nhầm thành Tin thật)\n")
-        for idx, row in top_fn.iterrows():
-            txt = str(row['text'])[:300]
-            md.write(f"- **Xác suất giả:** `{row['fake_probability']:.4f}` | **Nội dung:** {txt}...\n")
-
-    # 5. Threshold analysis (0.3, 0.4, 0.5, 0.6, 0.7)
-    thresholds = [0.3, 0.4, 0.5, 0.6, 0.7]
+    # Threshold analysis
     thresh_results = []
-    for th in thresholds:
-        yp_th = (y_probs >= th).astype(int)
-        p, r, f, _ = precision_recall_fscore_support(y_test, yp_th, labels=[0, 1], zero_division=0)
+    for th in [0.3, 0.4, 0.5, 0.6, 0.7]:
+        y_p_th = (y_probs >= th).astype(int)
+        m_th = compute_metrics(y_test, y_p_th, y_probs)
         thresh_results.append({
             "threshold": th,
-            "precision_fake": float(p[1]),
-            "recall_fake": float(r[1]),
-            "f1_fake": float(f[1])
+            "accuracy": m_th['accuracy'],
+            "fake_precision": m_th['fake_precision'],
+            "fake_recall": m_th['fake_recall'],
+            "fake_f1": m_th['fake_f1']
         })
     pd.DataFrame(thresh_results).to_csv(os.path.join(res_base, "tables/threshold_analysis.csv"), index=False)
-
-    # 6. Inference time table
-    time_data = [{
-        "phobert_extraction_sec_per_sample": round(phobert_time_per_sample, 4),
-        "svm_prediction_sec_per_sample": round(svm_time_per_sample, 4),
-        "total_inference_sec_per_sample": round(total_time_per_sample, 4),
-        "svm_model_size_mb": round(model_size_mb, 2),
-        "scaler_size_mb": round(scaler_size_mb, 2)
-    }]
-    pd.DataFrame(time_data).to_csv(os.path.join(res_base, "tables/inference_time.csv"), index=False)
-
-    # 7. Environment JSON
-    env_info = get_system_info()
-    with open(os.path.join(res_base, "environment.json"), "w", encoding="utf-8") as f:
-        json.dump(env_info, f, ensure_ascii=False, indent=4)
-
-    print("✅ Đã hoàn tất toàn bộ quá trình đánh giá và xuất báo cáo kết quả!")
 
 if __name__ == "__main__":
     evaluate_main()

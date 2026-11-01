@@ -16,17 +16,17 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score
 )
+from src.config import get_paths
 
-# Cố định random seed (Quy ước cố định 42)
 RANDOM_STATE = 42
 random.seed(RANDOM_STATE)
 np.random.seed(RANDOM_STATE)
 
 def train_and_tune_svm(
-    train_feat_path: str = "data/splits/train_features_768.npy",
-    train_label_path: str = "data/splits/train_labels.npy",
-    val_feat_path: str = "data/splits/val_features_768.npy",
-    val_label_path: str = "data/splits/val_labels.npy",
+    train_feat_path: str = None,
+    train_label_path: str = None,
+    val_feat_path: str = None,
+    val_label_path: str = None,
     model_output_path: str = None,
     scaler_output_path: str = None,
     tuning_table_path: str = None,
@@ -35,15 +35,17 @@ def train_and_tune_svm(
     use_best: bool = False,
     class_weight_arg = None
 ):
-    """
-    Huấn luyện và tinh chỉnh siêu tham số SVM trên tập Validation theo DACN.pdf (Mục 2.4.2).
-    """
-    res_base = os.environ.get("RESULTS_BASE", "results")
-    if model_output_path is None: model_output_path = os.path.join(res_base, "saved_models/svm_model.pkl")
-    if scaler_output_path is None: scaler_output_path = os.path.join(res_base, "saved_models/scaler.pkl")
-    if tuning_table_path is None: tuning_table_path = os.path.join(res_base, "tables/svm_tuning.csv")
-    if final_config_path is None: final_config_path = os.path.join(res_base, "tables/svm_final_config.json")
-    if heatmap_path is None: heatmap_path = os.path.join(res_base, "figures/svm_tuning_heatmap.png")
+    paths = get_paths()
+    if train_feat_path is None: train_feat_path = os.path.join(paths.splits, "train_features_768.npy")
+    if train_label_path is None: train_label_path = os.path.join(paths.splits, "train_labels.npy")
+    if val_feat_path is None: val_feat_path = os.path.join(paths.splits, "val_features_768.npy")
+    if val_label_path is None: val_label_path = os.path.join(paths.splits, "val_labels.npy")
+    if model_output_path is None: model_output_path = os.path.join(paths.saved_models, "svm_model.pkl")
+    if scaler_output_path is None: scaler_output_path = os.path.join(paths.saved_models, "scaler.pkl")
+    if tuning_table_path is None: tuning_table_path = os.path.join(paths.tables, "svm_tuning.csv")
+    if final_config_path is None: final_config_path = os.path.join(paths.tables, "svm_final_config.json")
+    if heatmap_path is None: heatmap_path = os.path.join(paths.figures, "svm_tuning_heatmap.png")
+
     required_files = [train_feat_path, train_label_path, val_feat_path, val_label_path]
     for f in required_files:
         if not os.path.exists(f):
@@ -67,8 +69,6 @@ def train_and_tune_svm(
     
     tuning_results = []
     print("\n🔬 Bắt đầu quá trình Grid Search / Khảo sát siêu tham số trên tập Validation:")
-    best_f1_fake = -1.0
-    best_config = None
 
     for kernel in kernels:
         for C in C_values:
@@ -76,7 +76,6 @@ def train_and_tune_svm(
                 cw_name = str(cw)
                 print(f"   - Đang huấn luyện SVM (kernel='{kernel}', C={C}, class_weight={cw_name})...")
                 start_t = time.time()
-                # Dùng probability=False khi tuning cho nhanh
                 svm_tune = SVC(
                     kernel=kernel,
                     C=C,
@@ -88,15 +87,12 @@ def train_and_tune_svm(
                 svm_tune.fit(X_train_scaled, y_train)
                 train_time = time.time() - start_t
 
-                # Dự đoán trên tập train để kiểm tra overfitting
                 y_train_pred = svm_tune.predict(X_train_scaled)
                 train_acc = accuracy_score(y_train, y_train_pred)
 
-                # Dự đoán trên tập Validation
                 y_val_pred = svm_tune.predict(X_val_scaled)
                 val_acc = accuracy_score(y_val, y_val_pred)
 
-                # Chỉ số cho lớp Tin giả (label = 1)
                 precision, recall, f1_cls, _ = precision_recall_fscore_support(y_val, y_val_pred, average=None, labels=[0, 1])
                 prec_fake = precision[1] if len(precision) > 1 else 0.0
                 rec_fake = recall[1] if len(recall) > 1 else 0.0
@@ -104,7 +100,6 @@ def train_and_tune_svm(
                 
                 f1_macro = f1_score(y_val, y_val_pred, average='macro')
 
-                # Tính AUC bằng decision_function
                 try:
                     decision_scores = svm_tune.decision_function(X_val_scaled)
                     auc_val = roc_auc_score(y_val, decision_scores)
@@ -113,7 +108,7 @@ def train_and_tune_svm(
 
                 n_support = int(np.sum(svm_tune.n_support_))
 
-                print(f"     -> Train Acc: {train_acc*100:.2f}% (Overfitting check) | Val Acc: {val_acc*100:.2f}% | F1 (Fake): {f1_fake*100:.2f}% | AUC: {auc_val:.4f} | Support Vectors: {n_support}")
+                print(f"     -> Train Acc: {train_acc*100:.2f}% | Val Acc: {val_acc*100:.2f}% | F1 (Fake): {f1_fake*100:.2f}% | AUC: {auc_val:.4f} | Support Vectors: {n_support}")
 
                 tuning_results.append({
                     "kernel": kernel,
@@ -130,19 +125,31 @@ def train_and_tune_svm(
                     "training_time_sec": round(train_time, 2)
                 })
 
-                if f1_fake > best_f1_fake:
-                    best_f1_fake = f1_fake
-                    best_config = (kernel, C, cw)
-
-    # Lưu bảng kết quả tuning
     os.makedirs(os.path.dirname(tuning_table_path), exist_ok=True)
     df_tuning = pd.DataFrame(tuning_results)
     df_tuning.to_csv(tuning_table_path, index=False)
     print(f"\n💾 Đã lưu bảng kết quả khảo sát tham số tại {tuning_table_path}")
 
+    # Tie-breaking: khi nhiều cấu hình hòa F1 lớp Tin giả, ưu tiên cấu hình mặc định (linear, C=1.0, class_weight=None) trước
+    max_f1 = max(r['f1_fake'] for r in tuning_results)
+    tied_results = [r for r in tuning_results if abs(r['f1_fake'] - max_f1) < 1e-6]
+
+    default_cw = class_weight_arg if class_weight_arg is not None else None
+    default_cw_name = str(default_cw)
+
+    selected_result = None
+    for r in tied_results:
+        if r['kernel'] == 'linear' and r['C'] == 1.0 and r['class_weight'] == default_cw_name:
+            selected_result = r
+            break
+    if selected_result is None:
+        selected_result = tied_results[0]
+
+    best_config = (selected_result['kernel'], selected_result['C'], None if selected_result['class_weight'] == 'None' else selected_result['class_weight'])
+    best_f1_fake = selected_result['f1_fake']
+
     print(f"\n🏆 Cấu hình tốt nhất trên Validation (theo F1 Tin giả): kernel='{best_config[0]}', C={best_config[1]}, class_weight={best_config[2]} (F1 Fake: {best_f1_fake*100:.2f}%)")
 
-    # Vẽ Heatmap F1 Tin giả theo kernel x C (với class_weight=None hoặc phổ biến)
     try:
         os.makedirs(os.path.dirname(heatmap_path), exist_ok=True)
         plt.figure(figsize=(8, 6))
@@ -158,21 +165,19 @@ def train_and_tune_svm(
     except Exception as e:
         print(f"⚠️ Không thể vẽ biểu đồ nhiệt: {e}")
 
-    # Xác định cấu hình cuối cùng để huấn luyện mô hình
     final_kernel = "linear"
     final_C = 1.0
-    final_cw = None
+    final_cw = default_cw
 
     if use_best:
         print(f"⚙️ [--use-best được kích hoạt] Sử dụng cấu hình tốt nhất: kernel='{best_config[0]}', C={best_config[1]}...")
         final_kernel, final_C, final_cw = best_config
     else:
-        default_config = ("linear", 1.0, None)
-        if best_config != default_config:
-            # Tính chênh lệch F1
-            default_row = df_tuning[(df_tuning['kernel'] == 'linear') & (df_tuning['C'] == 1.0) & (df_tuning['class_weight'] == 'None')]
-            default_f1 = default_row['f1_fake'].values[0] if len(default_row) > 0 else 0.0
-            diff = best_f1_fake - default_f1
+        default_config = ("linear", 1.0, default_cw)
+        default_row = df_tuning[(df_tuning['kernel'] == 'linear') & (df_tuning['C'] == 1.0) & (df_tuning['class_weight'] == default_cw_name)]
+        default_f1 = default_row['f1_fake'].values[0] if len(default_row) > 0 else 0.0
+        diff = best_f1_fake - default_f1
+        if best_config != default_config and diff > 0:
             print(f"⚠️ [Cảnh báo] Cấu hình tốt nhất trên Val (F1={best_f1_fake*100:.2f}%) khác với mặc định báo cáo (Linear, C=1.0, F1={default_f1*100:.2f}%, chênh lệch: {diff*100:+.2f}%).")
             print("   Theo DACN.pdf, hệ thống giữ nguyên cấu hình chuẩn báo cáo (kernel='linear', C=1.0). Dùng --use-best nếu muốn đổi.")
 
@@ -195,7 +200,6 @@ def train_and_tune_svm(
     joblib.dump(scaler, scaler_output_path)
     print(f"💾 Đã lưu mô hình chính thức tại {model_output_path} và scaler tại {scaler_output_path}.")
 
-    # Lưu metadata cấu hình cuối cùng
     import sklearn
     config_meta = {
         "kernel": final_kernel,

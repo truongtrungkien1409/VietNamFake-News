@@ -54,3 +54,4 @@ ML core/ML/models/phobert_fake_news/model.safetensors
 *.log
 results/logs/
 results_quick/logs/
+docs/chapter3_data.md

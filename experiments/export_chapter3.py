@@ -1,19 +1,27 @@
 import os
+import sys
 import json
+import argparse
 import pandas as pd
 
 def export_chapter3():
-    # Xác định thư mục kết quả (ưu tiên results/, nếu không có thì dùng results_quick/)
-    res_base = "results"
+    parser = argparse.ArgumentParser(description="Export Chapter 3 markdown documentation.")
+    parser.add_argument("--allow-quick", action="store_true", help="Cho phép đọc từ results_quick.")
+    args, unknown = parser.parse_known_args()
+
+    res_base = os.environ.get("RESULTS_BASE", "results")
     if not os.path.exists(os.path.join(res_base, "environment.json")) and os.path.exists("results_quick/environment.json"):
         res_base = "results_quick"
-    
+
+    if res_base == "results_quick" and not args.allow_quick:
+        print("❌ Lỗi: Từ chối đọc từ results_quick trừ khi có tham số --allow-quick.")
+        sys.exit(1)
+
     print(f"📂 Đang đọc dữ liệu kết quả từ thư mục: {res_base}/")
 
     output_md = "docs/chapter3_data.md"
     os.makedirs(os.path.dirname(output_md), exist_ok=True)
 
-    # Đọc các file dữ liệu
     env_path = os.path.join(res_base, "environment.json")
     config_path = os.path.join(res_base, "tables/svm_final_config.json")
     metrics_path = os.path.join(res_base, "tables/evaluation_metrics.csv")
@@ -40,12 +48,13 @@ def export_chapter3():
     df_comp = pd.read_csv(comp_path) if os.path.exists(comp_path) else None
     df_mcnemar = pd.read_csv(mcnemar_path) if os.path.exists(mcnemar_path) else None
 
-    # Tạo nội dung Markdown cho Chương 3
     lines = []
+    if res_base == "results_quick":
+        lines.append("DỮ LIỆU GIẢ LẬP - KHÔNG DÙNG CHO BÁO CÁO\n\n")
+
     lines.append("# Dữ Liệu Thực Nghiệm Chương 3: Kết Quả và Đánh Giá\n")
     lines.append(f"*Tài liệu được tự động tổng hợp từ thư mục `{res_base}/` lúc {env_data.get('timestamp', 'N/A')}.*\n\n")
 
-    # --- 3.1 Cấu hình môi trường và tham số ---
     lines.append("## 3.1 Cấu Hình Môi Trường & Siêu Tham Số Thực Nghiệm\n")
     lines.append("### Bảng 3.1.1: Thông tin phần cứng và phần mềm hệ thống\n")
     lines.append("| Thông số | Giá trị |\n")
@@ -69,7 +78,6 @@ def export_chapter3():
         lines.append("*Không tìm thấy file svm_final_config.json.*\n")
     lines.append("\n")
 
-    # --- 3.2 Kết quả PhoBERT-SVM trên Test ---
     lines.append("## 3.2 Kết Quả Đánh Giá Mô Hình PhoBERT-SVM Trên Tập Test\n")
     if df_metrics is not None and not df_metrics.empty:
         m = df_metrics.iloc[0]
@@ -97,7 +105,6 @@ def export_chapter3():
     lines.append(f"- Đường cong ROC-AUC: `{res_base}/figures/roc_curve.png`\n")
     lines.append(f"- Đường cong Precision-Recall: `{res_base}/figures/pr_curve.png`\n\n")
 
-    # --- 3.3 Kết quả chọn siêu tham số trên Validation và Phân tích ngưỡng ---
     lines.append("## 3.3 Khảo Sát Siêu Tham Số & Phân Tích Ngưỡng (Threshold Analysis)\n")
     if df_tuning is not None and not df_tuning.empty:
         lines.append("### Bảng 3.3.1: Kết quả Grid Search SVM trên tập Validation (`svm_tuning.csv`)\n")
@@ -109,7 +116,6 @@ def export_chapter3():
         lines.append(df_thresh.to_markdown(index=False))
         lines.append("\n\n")
 
-    # --- 3.4 Phân tích lỗi ---
     lines.append("## 3.4 Phân Tích Mẫu Lỗi (Error Analysis)\n")
     fp_count = len(df_errors[df_errors['error_type'] == 'FP']) if df_errors is not None and 'error_type' in df_errors.columns else 0
     fn_count = len(df_errors[df_errors['error_type'] == 'FN']) if df_errors is not None and 'error_type' in df_errors.columns else 0
@@ -117,7 +123,6 @@ def export_chapter3():
     lines.append(f"- **Tổng số mẫu False Negative (FN)**: `{fn_count}`\n")
     lines.append(f"- **Chi tiết mẫu lỗi định tính**: Xem tại file `{res_base}/error_samples.md`.\n\n")
 
-    # --- 3.5 So sánh baseline ---
     lines.append("## 3.5 So Sánh Với Các Mô Hình Baseline & Kiểm Định Thống Kê\n")
     if df_comp is not None and not df_comp.empty:
         lines.append("### Bảng 3.5.1: So sánh hiệu năng PhoBERT-SVM và các baseline (`model_comparison.csv`)\n")

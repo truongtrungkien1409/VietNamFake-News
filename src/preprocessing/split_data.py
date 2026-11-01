@@ -3,11 +3,17 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from src.preprocessing.preprocess import preprocess_dataframe
 
-def split_dataset(input_csv: str, output_dir: str = "data/splits", processed_dir: str = "data/processed", random_state: int = 42):
+from src.config import get_paths
+
+def split_dataset(input_csv: str, output_dir: str = None, processed_dir: str = None, random_state: int = 42):
     """
     Đọc dữ liệu thô, tiến hành tiền xử lý 5 bước toàn bộ (lưu clean.csv vào processed_dir),
     sau đó phân chia phân tầng (Stratified Split) 80% Train, 10% Validation, 10% Test.
     """
+    paths = get_paths()
+    if output_dir is None: output_dir = paths.splits
+    if processed_dir is None: processed_dir = paths.processed
+
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(processed_dir, exist_ok=True)
 

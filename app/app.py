@@ -7,6 +7,7 @@ import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from transformers import AutoTokenizer, AutoModel
+from src.config import get_paths
 from src.preprocessing.preprocess import TextPreprocessor
 
 # Cấu hình logging
@@ -14,11 +15,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["chrome-extension://*", "http://localhost:*", "http://127.0.0.1:*"]}})
+CORS(app, resources={r"/*": {"origins": [r"^chrome-extension://.*$", r"^http://localhost(:\d+)?$", r"^http://127\.0\.0\.1(:\d+)?$"]}})
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-res_base = os.environ.get("RESULTS_BASE", "results")
-MODEL_DIR = os.path.join(os.path.dirname(BASE_DIR), res_base, "saved_models")
+paths = get_paths()
+MODEL_DIR = paths.saved_models
 PHOBERT_NAME = "vinai/phobert-base-v2"
 
 # Khởi tạo thiết bị và mô hình

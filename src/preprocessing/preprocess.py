@@ -54,15 +54,18 @@ class TextPreprocessor:
         # Luôn chuẩn hóa NFC cơ bản
         text = unicodedata.normalize("NFC", text)
 
-        # 1. clean_url_html: Xóa HTML tags, chuẩn hóa URL và Mentions
+        # 1. clean_url_html: Xóa HTML tags
         if self.clean_url_html:
             text = re.sub(r"<[^>]+>", "", text)
-            text = re.sub(r"https?://\S+|www\.\S+|url_placeholder", "HTTPURL", text, flags=re.IGNORECASE)
-            text = re.sub(r"@\[A-Za-z0-9_]+|@\w+", "@USER", text)
 
         # 2. lowercase
         if self.lowercase:
             text = text.lower()
+
+        # Chuẩn hóa URL và Mentions sau lowercase để giữ chữ hoa HTTPURL và @USER
+        if self.clean_url_html:
+            text = re.sub(r"https?://\S+|www\.\S+|url_placeholder", "HTTPURL", text, flags=re.IGNORECASE)
+            text = re.sub(r"@\[A-Za-z0-9_]+|@\w+|@user", "@USER", text, flags=re.IGNORECASE)
 
         # 3. hashtag_punct: Xử lý hashtag và dấu câu lặp
         if self.hashtag_punct:
