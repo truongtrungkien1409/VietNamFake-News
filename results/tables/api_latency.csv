@@ -1,0 +1,2 @@
+total_requests,mean_latency_ms,median_latency_ms,p95_latency_ms
+100,1.36,1.02,2.29

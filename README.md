@@ -156,7 +156,7 @@ Toàn bộ các bảng số liệu, biểu đồ và phân tích định tính �
 - `results/tables/evaluation_metrics.csv`
 - `results/figures/confusion_matrix.png`, `roc_curve.png`, `pr_curve.png`
 - `results/tables/predictions_test.csv` & `error_analysis.csv`
-- `results/error.md` (Top FP & FN)
+- `results/error_samples.md` (Top FP & FN)
 - `results/tables/model_comparison.csv` (So sánh với Naive Bayes, TextLSTM, TextCNN)
 - `results/tables/ablation_preprocessing.csv` & biểu đồ `ablation_preprocessing.png`
 

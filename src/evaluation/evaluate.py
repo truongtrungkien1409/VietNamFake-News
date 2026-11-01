@@ -93,10 +93,11 @@ def evaluate_main(
     y_probs = svm_model.predict_proba(X_test_scaled)[:, 1]
     y_pred = svm_model.predict(X_test_scaled)
     svm_time_total = time.time() - start_svm
-    svm_time_per_sample = svm_time_total / len(X_test)
+    svm_time_per_sample = svm_time_total / len(X_test) if len(X_test) > 0 else 0.0
 
     # Đo thời gian trích xuất PhoBERT thật trên 100 mẫu test đầu tiên (sau 1 lần khởi động, lấy trung bình mỗi mẫu)
     phobert_time_per_sample = float('nan')
+    measurement_method = "batch_100_samples"
     try:
         sample_texts = test_df['text'].head(100).astype(str).tolist() if test_df is not None and 'text' in test_df.columns else [f"Sample {i}" for i in range(min(100, len(X_test)))]
         if sample_texts:
@@ -117,13 +118,14 @@ def evaluate_main(
     except Exception as e:
         print(f"⚠️ Không thể đo thời gian trích xuất PhoBERT thực tế: {e}")
 
-    total_time_per_sample = (phobert_time_per_sample if not np.isnan(phobert_time_per_sample) else 0.0) + svm_time_per_sample
-
-    model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
-    scaler_size_mb = os.path.getsize(scaler_path) / (1024 * 1024)
+    if not np.isnan(phobert_time_per_sample):
+        total_time_per_sample = phobert_time_per_sample + svm_time_per_sample
+    else:
+        total_time_per_sample = float('nan')
 
     metrics = compute_metrics(y_test, y_pred, y_probs)
-    metrics["inference_sec_per_sample"] = round(total_time_per_sample, 6)
+    metrics["inference_sec_per_sample"] = total_time_per_sample
+    metrics["inference_measurement_method"] = measurement_method
 
     def f1_fake_func(yt, yp):
         p, r, f, _ = precision_recall_fscore_support(yt, yp, labels=[0, 1], zero_division=0)
@@ -175,15 +177,14 @@ def evaluate_main(
     df_errors = df_preds[df_preds['error_type'].isin(['FP', 'FN'])].copy()
     df_errors.to_csv(os.path.join(res_base, "tables/error_analysis.csv"), index=False)
 
-    # Thêm inference_time.csv
     df_inf = pd.DataFrame([{
         "phobert_time_per_sample_sec": phobert_time_per_sample,
         "svm_time_per_sample_sec": svm_time_per_sample,
-        "total_inference_sec_per_sample": total_time_per_sample
+        "total_inference_sec_per_sample": total_time_per_sample,
+        "measurement_method": measurement_method
     }])
     df_inf.to_csv(os.path.join(res_base, "tables/inference_time.csv"), index=False)
 
-    # Threshold analysis
     thresh_results = []
     for th in [0.3, 0.4, 0.5, 0.6, 0.7]:
         y_p_th = (y_probs >= th).astype(int)

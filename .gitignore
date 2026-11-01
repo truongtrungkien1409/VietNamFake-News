@@ -41,7 +41,9 @@ ML core/dataset-1/
 ML core/datasetvn/
 
 # Saved Model Weights & Checkpoints
-results/
+results/saved_models/
+results/logs/
+results/ablation_cache/
 results_quick/
 *.pkl
 *.pth
@@ -52,6 +54,4 @@ ML core/ML/models/phobert_fake_news/model.safetensors
 
 # Logs
 *.log
-results/logs/
-results_quick/logs/
 docs/chapter3_data.md

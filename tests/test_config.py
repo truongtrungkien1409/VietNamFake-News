@@ -5,7 +5,7 @@ import pytest
 from src.config import get_paths
 from src.preprocessing.split_data import split_dataset
 
-def test_config_and_isolation(tmp_path):
+def test_config_and_isolation(tmp_path, monkeypatch):
     real_splits = "data/splits"
     real_results = "results"
     
@@ -16,9 +16,9 @@ def test_config_and_isolation(tmp_path):
     temp_splits = tmp_path / "splits_temp"
     temp_processed = tmp_path / "processed_temp"
 
-    os.environ["RESULTS_BASE"] = str(temp_results)
-    os.environ["SPLITS_BASE"] = str(temp_splits)
-    os.environ["PROCESSED_BASE"] = str(temp_processed)
+    monkeypatch.setenv("RESULTS_BASE", str(temp_results))
+    monkeypatch.setenv("SPLITS_BASE", str(temp_splits))
+    monkeypatch.setenv("PROCESSED_BASE", str(temp_processed))
 
     paths = get_paths()
     assert paths.results_base == str(temp_results)
@@ -39,7 +39,3 @@ def test_config_and_isolation(tmp_path):
         assert not os.path.exists(real_splits)
     if not real_results_existed:
         assert not os.path.exists(real_results)
-
-    os.environ.pop("RESULTS_BASE", None)
-    os.environ.pop("SPLITS_BASE", None)
-    os.environ.pop("PROCESSED_BASE", None)

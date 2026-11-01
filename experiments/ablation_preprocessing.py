@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from src.preprocessing.preprocess import TextPreprocessor
 from src.evaluation.metrics import compute_metrics, bootstrap_ci, mcnemar_test
+from src.config import get_paths
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -48,8 +49,9 @@ VARIANTS_CONFIG = {
 }
 
 def run_ablation_experiment(max_samples: int = None, selected_variants: list = None):
-    train_csv = "data/splits/train.csv"
-    test_csv = "data/splits/test.csv"
+    paths = get_paths()
+    train_csv = os.path.join(paths.splits, "train.csv")
+    test_csv = os.path.join(paths.splits, "test.csv")
 
     if not os.path.exists(train_csv) or not os.path.exists(test_csv):
         print(f"❌ Lỗi: Không tìm thấy file dữ liệu tại {train_csv} hoặc {test_csv}.")
@@ -78,13 +80,15 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
     variant_preds = {}
     y_test_arr = test_df['label'].astype(int).values
 
+    sample_tag = str(max_samples) if max_samples is not None else "full"
+
     for var_key in selected_variants:
         if var_key not in VARIANTS_CONFIG:
             continue
         cfg = VARIANTS_CONFIG[var_key]
         print(f"\n--- Đang xử lý biến thể {var_key}: {cfg['name']} ---")
 
-        cache_dir = f"data/ablation/{var_key}"
+        cache_dir = os.path.join(paths.results_base, "ablation_cache", f"{var_key}_{sample_tag}")
         os.makedirs(cache_dir, exist_ok=True)
         tr_feat_file = os.path.join(cache_dir, "train_feat.npy")
         te_feat_file = os.path.join(cache_dir, "test_feat.npy")
@@ -92,7 +96,7 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
         te_lab_file = os.path.join(cache_dir, "test_lab.npy")
 
         if all(os.path.exists(f) for f in [tr_feat_file, te_feat_file, tr_lab_file, te_lab_file]):
-            print(f"   📂 Đã tìm thấy cache cho biến thể {var_key}, đang nạp từ đĩa...")
+            print(f"   📂 Đã tìm thấy cache cho biến thể {var_key} ({sample_tag}), đang nạp từ đĩa...")
             X_train = np.load(tr_feat_file)
             X_test = np.load(te_feat_file)
             y_train = np.load(tr_lab_file)
@@ -112,7 +116,6 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
             print(f"   🔄 Trích xuất [CLS] embeddings từ PhoBERT cho biến thể {var_key}...")
             start_ext = time.time()
             
-            # Đo tốc độ batch đầu tiên để ước lượng thời gian
             batch_start = time.time()
             
             train_embeds = []
@@ -123,7 +126,7 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
                     train_embeds.append(model(**encoded).last_hidden_state[:, 0, :].cpu().numpy())
                 if i == 0 and len(train_texts) > BATCH_SIZE:
                     batch_time = time.time() - batch_start
-                    est_total = batch_time * (len(train_texts) / BATCH_SIZE) * 2 # Train + Test
+                    est_total = batch_time * (len(train_texts) / BATCH_SIZE) * 2
                     print(f"   ⏱️ [Ước lượng] Lô đầu mất {batch_time:.2f}s. Tổng thời gian ước tính cho biến thể này: ~{est_total:.1f}s")
 
             X_train = np.concatenate(train_embeds, axis=0)
@@ -143,7 +146,6 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
             np.save(tr_lab_file, y_train)
             np.save(te_lab_file, y_test)
 
-        # Huấn luyện SVM Linear C=1.0
         print(f"   ⚖️ Huấn luyện và đánh giá SVM cho biến thể {var_key}...")
         scaler = StandardScaler()
         X_tr_scaled = scaler.fit_transform(X_train)
@@ -171,17 +173,15 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
             "extraction_time_sec": round(ext_time, 2)
         })
 
-    res_base = os.environ.get("RESULTS_BASE", "results")
+    res_base = paths.results_base
     os.makedirs(os.path.join(res_base, "tables"), exist_ok=True)
     os.makedirs(os.path.join(res_base, "figures"), exist_ok=True)
 
-    # 1. ablation_preprocessing.csv
     df_ablation = pd.DataFrame(results)
     ablation_csv_path = os.path.join(res_base, "tables/ablation_preprocessing.csv")
     df_ablation.to_csv(ablation_csv_path, index=False)
     print(f"\n💾 Đã xuất bảng kết quả ablation tại {ablation_csv_path}")
 
-    # 2. McNemar test so sánh E với các biến thể khác
     mcnemar_rows = []
     if "E" in variant_preds:
         base_pred = variant_preds["E"]
@@ -201,7 +201,6 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
         df_mcnemar.to_csv(mcnemar_csv_path, index=False)
         print(f"💾 Đã xuất kết quả kiểm định McNemar tại {mcnemar_csv_path}")
 
-    # 3. Biểu đồ ablation_preprocessing.png (Cột F1 lớp Tin giả + Bootstrap CI)
     print("📈 Đang vẽ biểu đồ ablation...")
     f1_vals = []
     ci_lowers = []
@@ -210,11 +209,8 @@ def run_ablation_experiment(max_samples: int = None, selected_variants: list = N
 
     for idx, row in df_ablation.iterrows():
         var_k = row["variant"]
-        # Tính CI cho từng biến thể
         yp = variant_preds[var_k]
         def f1_func(yt, yp_):
-            p, r, f, _ = compute_metrics(yt, yp_, yp_).get("fake_f1", 0.0), 0, 0, 0 # simple helper
-            # hoặc dùng precision_recall_fscore_support
             from sklearn.metrics import precision_recall_fscore_support
             _, _, f_arr, _ = precision_recall_fscore_support(y_test_arr, yp_, labels=[0, 1], zero_division=0)
             return f_arr[1] if len(f_arr) > 1 else 0.0

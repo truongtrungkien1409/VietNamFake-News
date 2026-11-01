@@ -5,7 +5,7 @@ class PathConfig:
         self.results_base = results_base
         self.splits = splits_base
         self.processed = processed_base
-        self.saved_models = os.path.join(results_base, "models")
+        self.saved_models = os.path.join(results_base, "saved_models")
         self.tables = os.path.join(results_base, "tables")
         self.figures = os.path.join(results_base, "figures")
 

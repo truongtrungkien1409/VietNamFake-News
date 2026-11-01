@@ -3,13 +3,15 @@ import time
 import numpy as np
 import pandas as pd
 from app.app import app
+from src.config import get_paths
 
 def run_benchmark():
-    res_base = os.environ.get("RESULTS_BASE", "results")
+    paths = get_paths()
+    res_base = paths.results_base
     output_csv = os.path.join(res_base, "tables/api_latency.csv")
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
 
-    test_csv = "data/splits/test.csv"
+    test_csv = os.path.join(paths.splits, "test.csv")
     texts = []
     if os.path.exists(test_csv):
         df = pd.read_csv(test_csv)
@@ -17,7 +19,6 @@ def run_benchmark():
             texts = df['text'].astype(str).tolist()
 
     if len(texts) < 100:
-        # Bổ sung hoặc tạo danh sách mẫu nếu chưa đủ 100
         base_text = "Đây là bản tin thử nghiệm đánh giá hiệu năng thời gian suy luận của hệ thống nhận diện tin giả PhoBERT-SVM."
         while len(texts) < 100:
             texts.append(base_text + f" Mẫu số {len(texts)}")
