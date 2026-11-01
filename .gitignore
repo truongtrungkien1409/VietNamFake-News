@@ -18,6 +18,7 @@ ENV/
 !.env.example
 .streamlit/secrets.toml
 .ipynb_checkpoints/
+.pytest_cache/
 
 # IDEs and Editors
 .vscode/
@@ -40,7 +41,8 @@ ML core/dataset-1/
 ML core/datasetvn/
 
 # Saved Model Weights & Checkpoints
-results/saved_models/
+results/
+results_quick/
 *.pkl
 *.pth
 *.pt
@@ -51,3 +53,4 @@ ML core/ML/models/phobert_fake_news/model.safetensors
 # Logs
 *.log
 results/logs/
+results_quick/logs/

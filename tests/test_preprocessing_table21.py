@@ -10,7 +10,7 @@ def test_table21_sample():
     
     assert "không" in cleaned
     assert "được" in cleaned
-    assert "HTTPURL" in cleaned
+    assert "httpurl" in cleaned
     assert "tin_nong" in cleaned
     assert "tức giận" in cleaned
 

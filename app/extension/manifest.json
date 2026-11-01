@@ -5,7 +5,12 @@
   "description": "Tiện ích mở rộng trình duyệt kiểm tra tin giả tiếng Việt thời gian thực sử dụng PhoBERT và SVM.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:5000/*",
+    "http://localhost:5000/*"
   ],
   "action": {
     "default_popup": "popup.html"
