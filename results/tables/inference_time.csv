@@ -1,0 +1,2 @@
+phobert_time_per_sample_sec,svm_time_per_sample_sec,total_inference_sec_per_sample,measurement_method
+0.08709969123204549,0.00016776720682779947,0.08726745843887329,batch_100_samples

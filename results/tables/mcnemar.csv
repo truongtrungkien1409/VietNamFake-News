@@ -1,0 +1,6 @@
+comparison,mcnemar_statistic,p_value,significant_at_0.05
+Variant E vs Variant A,inf,0.0,True
+Variant E vs Variant B,inf,0.0,True
+Variant E vs Variant C,inf,0.0,True
+Variant E vs Variant D,inf,0.0,True
+Variant E vs Variant F,inf,0.0,True

@@ -1,0 +1,2 @@
+accuracy,real_precision,real_recall,real_f1,real_support,fake_precision,fake_recall,fake_f1,fake_support,macro_precision,macro_recall,macro_f1,weighted_precision,weighted_recall,weighted_f1,auc_roc,average_precision,TN,FP,FN,TP,inference_sec_per_sample,inference_measurement_method,fake_f1_ci_lower,fake_f1_ci_upper
+1.0,1.0,1.0,1.0,6,1.0,1.0,1.0,6,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,6,0,0,6,0.08726745843887329,batch_100_samples,1.0,1.0
