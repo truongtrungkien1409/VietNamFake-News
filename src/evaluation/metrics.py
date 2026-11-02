@@ -29,13 +29,11 @@ def compute_metrics(y_true, y_pred, y_score):
     y_score = np.array(y_score)
 
     acc = accuracy_score(y_true, y_pred)
-    precision, recall, support, _ = precision_recall_fscore_support(y_true, y_pred, labels=[0, 1], zero_division=0)
+    precision, recall, f1_classes, support = precision_recall_fscore_support(y_true, y_pred, labels=[0, 1], zero_division=0)
     
     macro_p, macro_r, macro_f1, _ = precision_recall_fscore_support(y_true, y_pred, average='macro', zero_division=0)
     weighted_p, weighted_r, weighted_f1, _ = precision_recall_fscore_support(y_true, y_pred, average='weighted', zero_division=0)
     
-    f1_classes = 2 * precision * recall / (precision + recall + 1e-10)
-
     try:
         auc_roc = roc_auc_score(y_true, y_score)
     except Exception:

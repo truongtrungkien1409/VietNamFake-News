@@ -45,6 +45,7 @@ results/saved_models/
 results/logs/
 results/ablation_cache/
 results_quick/
+data/splits_quick/
 *.pkl
 *.pth
 *.pt

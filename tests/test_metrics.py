@@ -27,3 +27,20 @@ def test_compute_metrics():
     assert metrics["TN"] == 3
     assert metrics["FP"] == 0
     assert metrics["accuracy"] == 5 / 6
+
+def test_compute_metrics_class_support_and_confusion_matrix():
+    y_true = [0] * 6 + [1] * 4
+    y_pred = [0] * 5 + [1] + [1] * 3 + [0]
+    y_score = [0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0.9, 0.9, 0.9, 0.1]
+
+    metrics = compute_metrics(y_true, y_pred, y_score)
+
+    assert metrics["real_support"] == 6
+    assert metrics["fake_support"] == 4
+    assert metrics["fake_precision"] == pytest.approx(3 / 4)
+    assert metrics["fake_recall"] == pytest.approx(3 / 4)
+    assert metrics["fake_f1"] == pytest.approx(0.75)
+    assert metrics["TN"] == 5
+    assert metrics["FP"] == 1
+    assert metrics["FN"] == 1
+    assert metrics["TP"] == 3
