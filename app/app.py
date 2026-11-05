@@ -4,7 +4,7 @@ import logging
 import joblib
 import torch
 import numpy as np
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from transformers import AutoTokenizer, AutoModel
 from src.config import get_paths
@@ -55,6 +55,10 @@ else:
     logger.warning(f"⚠️ Không tìm thấy file Scaler tại {scaler_path}")
 
 MODEL_VERSION = "1.0.0-phobert-svm"
+
+@app.route("/", methods=["GET"])
+def home():
+    return render_template("index.html")
 
 @app.route("/health", methods=["GET"])
 def health_check():

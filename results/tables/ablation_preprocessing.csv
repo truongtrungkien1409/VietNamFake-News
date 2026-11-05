@@ -1,7 +1,0 @@
-variant,description,accuracy,precision_fake,recall_fake,f1_fake,auc_roc,f1_macro,extraction_time_sec
-A,A: Không tiền xử lý,1.0,1.0,1.0,1.0,1.0,1.0,10.95
-B,B: Chỉ URL/HTML cleanup,1.0,1.0,1.0,1.0,1.0,1.0,11.05
-C,C: B + hashtag & dấu câu lặp,1.0,1.0,1.0,1.0,1.0,1.0,11.02
-D,"D: C + teencode, emoji & lặp ký tự",1.0,1.0,1.0,1.0,1.0,1.0,13.41
-E,E: D + tách từ pyvi + lowercase (Chuẩn báo cáo),1.0,1.0,1.0,1.0,1.0,1.0,10.72
-F,F: E nhưng KHÔNG lowercase,1.0,1.0,1.0,1.0,1.0,1.0,10.41
