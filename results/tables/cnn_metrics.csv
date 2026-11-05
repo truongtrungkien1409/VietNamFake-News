@@ -1,0 +1,2 @@
+accuracy,real_precision,real_recall,real_f1,real_support,fake_precision,fake_recall,fake_f1,fake_support,macro_precision,macro_recall,macro_f1,weighted_precision,weighted_recall,weighted_f1,auc_roc,average_precision,TN,FP,FN,TP,training_time_sec,inference_sec_per_sample
+0.8461538461538461,1.0,0.6923076923076923,0.8181818181818181,13,0.7647058823529411,1.0,0.8666666666666666,13,0.8823529411764706,0.8461538461538461,0.8424242424242423,0.8823529411764706,0.8461538461538461,0.8424242424242423,0.8698224852071006,0.8194157150039503,9,4,0,13,9.13,0.001924

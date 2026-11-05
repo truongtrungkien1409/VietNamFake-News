@@ -1,0 +1,7 @@
+step_id,description,duration_sec
+split_data,Phân chia dữ liệu,10.46
+extract_phobert,Trích xuất đặc trưng PhoBERT,205.43
+train_svm,Huấn luyện SVM & Tuning,9.24
+evaluate,Đánh giá mô hình trên Test,39.85
+baselines,Chạy các mô hình Baseline,54.72
+ablation,Thí nghiệm Ablation Study,929.15

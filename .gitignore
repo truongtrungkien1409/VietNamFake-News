@@ -56,3 +56,6 @@ ML core/ML/models/phobert_fake_news/model.safetensors
 # Logs
 *.log
 docs/chapter3_data.md
+
+docs/tham_khao/
+Chuong3_dulieu.md
