@@ -149,6 +149,20 @@ make quick
 5. So sánh Baseline: `make baselines`
 6. Ablation Study: `make ablation`
 
+Để đo lại thời gian trích xuất embedding theo từng split (kể cả khi embedding
+đã tồn tại), chạy:
+```powershell
+python -m src.features.extract_phobert --force
+```
+Kết quả được ghi vào `results/tables/phobert_extraction_timing.csv`.
+
+Để xuất các ví dụ tiền xử lý từ dữ liệu thật:
+```powershell
+python -m experiments.export_preprocessing_examples --input data/raw/vn_news_label_0_real.csv data/raw/vn_news_label_1_fake.csv
+```
+Hai file `preprocessing_examples.csv` và `preprocessing_summary.csv` được ghi
+vào `results/tables/`.
+
 ---
 
 ## 6. Danh Sách Kết Quả Thực Nghiệm (`results/`)

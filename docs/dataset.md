@@ -1,4 +1,4 @@
-# Hướng Dẫn Chuẩn Bị & Tài Liệu Dữ Liệu (Dataset Documentation)
+d# Hướng Dẫn Chuẩn Bị & Tài Liệu Dữ Liệu (Dataset Documentation)
 
 Tài liệu này mô tả nguồn gốc, quy tắc gộp, số mẫu, tỷ lệ nhãn và quy trình xử lý tập dữ liệu nhận diện tin giả tiếng Việt (`DACN.pdf`).
 

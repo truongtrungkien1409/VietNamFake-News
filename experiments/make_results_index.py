@@ -26,6 +26,9 @@ def generate_results_index(output_path: str = None):
         (os.path.join(res_base, "tables/svm_final_config.json"), "Metadata cấu hình huấn luyện SVM cuối cùng", "3.2 Kết quả thực nghiệm"),
         (os.path.join(res_base, "figures/svm_tuning_heatmap.png"), "Biểu đồ nhiệt F1-score theo Kernel và C", "3.2 Kết quả thực nghiệm"),
         (os.path.join(res_base, "tables/run_timing.csv"), "Thống kê thời gian thực thi từng bước trong pipeline", "3.1 Môi trường thực nghiệm")
+        ,(os.path.join(res_base, "tables/phobert_extraction_timing.csv"), "Thời gian trích xuất embedding PhoBERT theo split", "3.1 Môi trường thực nghiệm")
+        ,(os.path.join(res_base, "tables/preprocessing_examples.csv"), "Ví dụ văn bản trước và sau tiền xử lý", "3.1 Môi trường thực nghiệm")
+        ,(os.path.join(res_base, "tables/preprocessing_summary.csv"), "Tóm tắt định lượng các bước lọc và chuẩn hóa", "3.1 Môi trường thực nghiệm")
     ]
 
     lines = [
@@ -43,7 +46,7 @@ def generate_results_index(output_path: str = None):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    print(f"✅ Đã tạo chỉ mục kết quả tại {output_path}")
+    print(f"Wrote results index to {output_path}")
 
 if __name__ == "__main__":
     generate_results_index()

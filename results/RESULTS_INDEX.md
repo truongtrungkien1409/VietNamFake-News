@@ -10,7 +10,7 @@ Tài liệu này tự động liệt kê toàn bộ các bảng dữ liệu và 
 | `results\figures/pr_curve.png` | Đường cong Precision-Recall | 3.2 Kết quả thực nghiệm | ✅ Đã tạo |
 | `results\tables/predictions_test.csv` | Chi tiết dự đoán trên toàn bộ tập Test (True label, Pred, Probability) | 3.3 Phân tích lỗi | ✅ Đã tạo |
 | `results\tables/error_analysis.csv` | Danh sách chi tiết các mẫu dự đoán sai (FP, FN) | 3.3 Phân tích lỗi | ✅ Đã tạo |
-| `results\error_samples.md` | 10 mẫu FP và 10 mẫu FN xác suất cao nhất (cắt 300 ký tự đầu) | 3.3 Phân tích lỗi | ⏳ Chưa chạy |
+| `results\error_samples.md` | 10 mẫu FP và 10 mẫu FN xác suất cao nhất (cắt 300 ký tự đầu) | 3.3 Phân tích lỗi | ✅ Đã tạo |
 | `results\tables/threshold_analysis.csv` | Phân tích Precision/Recall/F1 theo các ngưỡng quyết định (0.3 - 0.7) | 3.2 Kết quả thực nghiệm | ✅ Đã tạo |
 | `results\tables/inference_time.csv` | Thời gian suy luận trung bình mỗi mẫu và kích thước trọng số | 3.6 Triển khai hệ thống | ✅ Đã tạo |
 | `results\environment.json` | Thông tin phần cứng, OS, phiên bản thư viện môi trường | 3.1 Môi trường thực nghiệm | ✅ Đã tạo |
@@ -22,3 +22,6 @@ Tài liệu này tự động liệt kê toàn bộ các bảng dữ liệu và 
 | `results\tables/svm_final_config.json` | Metadata cấu hình huấn luyện SVM cuối cùng | 3.2 Kết quả thực nghiệm | ✅ Đã tạo |
 | `results\figures/svm_tuning_heatmap.png` | Biểu đồ nhiệt F1-score theo Kernel và C | 3.2 Kết quả thực nghiệm | ✅ Đã tạo |
 | `results\tables/run_timing.csv` | Thống kê thời gian thực thi từng bước trong pipeline | 3.1 Môi trường thực nghiệm | ✅ Đã tạo |
+| `results\tables/phobert_extraction_timing.csv` | Thời gian trích xuất embedding PhoBERT theo split | 3.1 Môi trường thực nghiệm | ⏳ Chưa chạy |
+| `results\tables/preprocessing_examples.csv` | Ví dụ văn bản trước và sau tiền xử lý | 3.1 Môi trường thực nghiệm | ✅ Đã tạo |
+| `results\tables/preprocessing_summary.csv` | Tóm tắt định lượng các bước lọc và chuẩn hóa | 3.1 Môi trường thực nghiệm | ✅ Đã tạo |
